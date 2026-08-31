@@ -1,6 +1,4 @@
-//! World generation: everything a round needs, derived deterministically
-//! from a single seed. Both the browser (via wasm) and the server run this,
-//! so they always agree on the world — including where Waldo is.
+//! World generation: everything a round needs, derived from a single seed.
 
 use crate::math::{v3, Quat, Vec3};
 use crate::rng::Rng;
@@ -17,13 +15,11 @@ pub struct Placement {
 
 /// A batch of same-kind scenery for instanced rendering.
 /// `transforms` is 10 floats per instance: pos(3) quat(4) scale(3).
-/// `colors`/`colors2` are 3 floats per instance (primary / secondary part),
-/// empty when the kind has a fixed material color.
 #[derive(Serialize)]
 pub struct InstanceSet {
     pub kind: &'static str,
     pub count: u32,
-    #[serde(skip)] // fetched as typed arrays through the wasm boundary
+    #[serde(skip)]
     pub transforms: Vec<f32>,
     #[serde(skip)]
     pub colors: Vec<f32>,
@@ -46,14 +42,9 @@ impl World {
     pub fn waldo_pos(&self) -> Vec3 {
         v3(self.waldo.pos[0], self.waldo.pos[1], self.waldo.pos[2])
     }
-    /// Planet diameter used for score normalization.
-    pub fn diameter(&self) -> f32 {
-        self.bounding_radius * 2.0
-    }
 }
 
-/// Uniform (area-weighted) random sampling of a triangle mesh surface —
-/// the Rust equivalent of Three.js MeshSurfaceSampler.
+/// Area-weighted random sampling of a triangle mesh surface.
 pub struct SurfaceSampler<'a> {
     mesh: &'a MeshData,
     cumulative: Vec<f32>,
@@ -80,13 +71,11 @@ impl<'a> SurfaceSampler<'a> {
         self.total_area
     }
 
-    /// Random surface point and interpolated outward normal.
     pub fn sample(&self, rng: &mut Rng) -> (Vec3, Vec3) {
         let target = rng.f32() * self.total_area;
         let ti = self.cumulative.partition_point(|&a| a < target).min(self.cumulative.len() - 1);
         let tri = &self.mesh.indices[ti * 3..ti * 3 + 3];
 
-        // uniform barycentric coords
         let r1 = rng.f32().sqrt();
         let r2 = rng.f32();
         let (wa, wb, wc) = (1.0 - r1, r1 * (1.0 - r2), r1 * r2);
@@ -151,7 +140,6 @@ const KINDS: [KindSpec; 11] = [
     KindSpec { kind: "decoy", count_min: 5.0, count_max: 12.0, clearance: 3.5, palette: &[], palette2: &[] },
 ];
 
-/// Per-kind scale variation (mirrors the visual language of the original game).
 fn kind_scale(kind: &str, rng: &mut Rng) -> [f32; 3] {
     match kind {
         "pine" => {
@@ -189,8 +177,7 @@ fn kind_scale(kind: &str, rng: &mut Rng) -> [f32; 3] {
     }
 }
 
-/// Baseline surface area of an average donut planet; scenery density is
-/// normalized against it so small planets aren't overcrowded.
+/// Scenery density is normalized against an average donut's surface area.
 const BASELINE_AREA: f32 = 1450.0;
 
 pub fn generate_world(seed: u32) -> World {
@@ -199,7 +186,6 @@ pub fn generate_world(seed: u32) -> World {
     let sampler = SurfaceSampler::new(&shape.mesh);
     let density = (sampler.total_area() / BASELINE_AREA).clamp(0.35, 1.6);
 
-    // Waldo goes first so scenery clearance can respect him.
     let (wpos, wnorm) = sampler.sample(&mut rng);
     let waldo = Placement {
         pos: [wpos.x, wpos.y, wpos.z],

@@ -1,6 +1,5 @@
-//! Deterministic PCG32 RNG. Hand-rolled (no `rand` dependency) so the exact
-//! same sequence is produced on every platform, including wasm32 — this is
-//! what guarantees all players generate the identical world from a seed.
+//! PCG32 RNG, hand-rolled so the same seed yields the same sequence
+//! on every platform, including wasm32.
 
 #[derive(Clone)]
 pub struct Rng {

@@ -1,6 +1,5 @@
-// Waldo Royale client orchestration: menu → lobby → rounds → results.
-// World generation runs in Rust (WASM); the server runs the same Rust core,
-// so a 32-bit seed is all that crosses the wire per round.
+// Client orchestration: menu, lobby, rounds, results. World generation
+// runs in Rust (WASM); a 32-bit seed is all that crosses the wire per round.
 
 import init, { generate_world } from '../pkg/waldo_wasm.js';
 import { GameRenderer } from './render.js';
@@ -16,17 +15,17 @@ const net = new Net();
 // ---------- state ----------
 let myId = null;
 let isHost = false;
-let players = [];           // [{id, name, is_host}]
-let mode = 'rotate';        // rotate | point
+let players = [];
+let mode = 'rotate';
 let playing = false;
-let found = false;          // found Waldo this round?
-let lastPick = null;        // last surface pick, for miss feedback
-let currentMeta = null;     // parsed world metadata for this round
+let found = false;
+let lastPick = null;
+let currentMeta = null;
 let roundEndsAt = 0;
 let roundMs = 1;
 let nextRoundAt = 0;
 let isLastRound = false;
-let world = null;           // WASM handle (kept alive during the round)
+let world = null;
 
 const colorForId = (id) => {
   const idx = players.findIndex((p) => p.id === id);
@@ -80,9 +79,8 @@ net
   .on('error', (m) => toast(m.message))
   .on('lobby', (m) => {
     renderLobby(m);
-    // The server re-broadcasts lobby state right after game_over (so the host
-    // can start a rematch) — don't let that yank players off the win screen
-    // or the round results. They leave via the BACK TO LOBBY button.
+    // The server re-broadcasts lobby state right after game_over;
+    // don't let that replace the win screen or round results.
     const inFlow = playing
       || $('#final').classList.contains('show')
       || $('#results').classList.contains('show');
@@ -112,7 +110,7 @@ net
     if (m.hit) {
       found = true;
       $('#foundBanner').style.display = 'block';
-      $('#foundScore').textContent = `+${m.score} — waiting for the others…`;
+      $('#foundScore').textContent = `+${m.score} · waiting for the others…`;
       R.markFound(currentMeta.waldo.pos);
     } else {
       toast(`Not him! −150 points (${m.misses} ${m.misses === 1 ? 'miss' : 'misses'})`);
@@ -147,7 +145,7 @@ net
     const myRank = lb.findIndex((s) => s.id === myId);
     const iWon = myRank === 0;
     $('#trophy').textContent = iWon ? '🏆' : ['', '🥈', '🥉'][myRank] ?? '😔';
-    $('#winnerName').textContent = iWon ? 'YOU WIN!' : (lb[0]?.name ?? '—') + ' wins';
+    $('#winnerName').textContent = iWon ? 'YOU WIN!' : (lb[0]?.name ?? 'Nobody') + ' wins';
     $('#winnerName').style.color = iWon ? '#ffe14a' : '#b9c0d8';
     $('#winnerName').style.textShadow = iWon ? '0 0 24px rgba(255,225,74,0.55)' : 'none';
     $('#finalSub').textContent = iWon

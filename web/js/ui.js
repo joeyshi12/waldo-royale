@@ -1,4 +1,3 @@
-// Tiny DOM helpers shared by the client.
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -20,7 +19,7 @@ export function fmtTime(totalSecs) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// distinct pin colors per player (index-stable within a game)
+// player colors, index-stable within a game
 export const PLAYER_COLORS = [
   '#ff5a5a', '#4fc3f7', '#ffe14a', '#81c784',
   '#ba68c8', '#ff9e40', '#f06292', '#4db6ac',

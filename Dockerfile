@@ -1,4 +1,4 @@
-# ---- build: wasm module + release server ----
+# build stage: wasm module + release server
 FROM rust:1-slim AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
@@ -11,7 +11,7 @@ COPY . .
 RUN wasm-pack build crates/wasm --target web --release --out-dir ../../web/pkg
 RUN cargo build --release -p waldo-server
 
-# ---- runtime ----
+# runtime
 FROM debian:bookworm-slim
 RUN useradd --system --uid 10001 waldo
 WORKDIR /app

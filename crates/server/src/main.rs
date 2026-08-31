@@ -1,9 +1,6 @@
-//! Waldo Royale lobby server.
-//!
-//! Serves the static client from `web/` and runs the multiplayer protocol
-//! over `/ws`. All game state lives in memory. Scoring is authoritative:
-//! the server re-derives each round's world from the seed via `waldo-core`
-//! and computes every player's score itself.
+//! Waldo Royale lobby server: serves the static client and runs the
+//! multiplayer protocol over `/ws`. State lives in memory; scoring is
+//! authoritative via waldo-core.
 
 use std::{
     collections::HashMap,
@@ -76,8 +73,7 @@ struct Lobby {
     round: u32,
     seed: u32,
     round_ends_ms: u64,
-    /// Waldo's position for the current round (cached at round start so
-    /// clicks don't regenerate the world).
+    /// Waldo's position for the current round, cached at round start.
     waldo: [f32; 3],
     /// Bumped whenever a scheduled timer becomes stale.
     timer_gen: u64,
@@ -136,7 +132,6 @@ fn start_round(state: &Shared, lobby: &mut Lobby) {
     lobby.round += 1;
     lobby.phase = Phase::Playing;
     lobby.seed = {
-        // unpredictable enough for a party game
         let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
         let mut r = Rng::new(t as u64 ^ (now_ms() << 16) ^ lobby.round as u64);
         r.next_u32()
@@ -162,7 +157,6 @@ fn start_round(state: &Shared, lobby: &mut Lobby) {
         },
     );
 
-    // schedule the round timeout
     let gen = lobby.timer_gen;
     let code = lobby.code.clone();
     let state = state.clone();
@@ -213,7 +207,6 @@ fn finish_round(state: &Shared, lobby: &mut Lobby) {
         },
     );
 
-    // schedule next round / game over
     let gen = lobby.timer_gen;
     let code = lobby.code.clone();
     let state_c = state.clone();
@@ -380,7 +373,7 @@ fn handle_msg(
             let waldo = v3(lobby.waldo[0], lobby.waldo[1], lobby.waldo[2]);
             let Some(p) = lobby.players.iter_mut().find(|p| p.id == *id) else { return };
             if p.found {
-                return; // already done this round
+                return;
             }
             let hit = v3(pos[0], pos[1], pos[2]).distance(waldo) <= WALDO_HIT_RADIUS;
             if hit {
@@ -414,7 +407,7 @@ fn leave(state: &Shared, code: &str, id: u32) {
         lobbies.remove(code);
         return;
     }
-    broadcast_lobby(lobby); // also announces the (possibly new) host
+    broadcast_lobby(lobby);
     if lobby.phase == Phase::Playing
         && lobby.players.iter().all(|p| p.found)
     {
@@ -458,7 +451,6 @@ fn web_dir() -> PathBuf {
     if let Ok(d) = std::env::var("WALDO_WEB_DIR") {
         return PathBuf::from(d);
     }
-    // works both from the workspace root and from an installed layout
     let candidates = [
         PathBuf::from("web"),
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../web"),
@@ -480,8 +472,7 @@ async fn main() {
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .fallback_service(ServeDir::new(&dir))
-        // game code changes often and is small: force CDN/browser revalidation
-        // so players never run a stale client after a deploy
+        // force CDN/browser revalidation so clients never run stale code
         .layer(SetResponseHeaderLayer::overriding(
             axum::http::header::CACHE_CONTROL,
             axum::http::HeaderValue::from_static("no-cache"),

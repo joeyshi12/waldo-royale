@@ -1,9 +1,7 @@
 name: Publish image
 
-# Builds and publishes registry.internal/waldo-royale whenever the
-# workspace version in Cargo.toml changes on main. The image tag is the
-# version itself (plus a moving `latest` tag). If the tag already exists in
-# the registry, the build is skipped — ordinary commits publish nothing.
+# Publishes registry.internal/waldo-royale when the workspace version
+# in Cargo.toml changes on main. Skips if the version tag already exists.
 
 on:
   push:
@@ -39,7 +37,7 @@ jobs:
         run: |
           if docker manifest inspect "$IMAGE:${{ steps.version.outputs.version }}" > /dev/null 2>&1; then
             echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "Tag ${{ steps.version.outputs.version }} already exists — skipping."
+            echo "Tag ${{ steps.version.outputs.version }} already exists, skipping."
           else
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi

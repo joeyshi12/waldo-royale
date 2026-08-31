@@ -1,18 +1,13 @@
-//! Scoring: speed is everything. You only score by actually clicking Waldo;
-//! the faster you find him, the more points. Wrong clicks cost a penalty so
-//! carpet-clicking the planet is a losing strategy.
-//! Computed by the server (authoritative) from the same code the client uses.
+//! Speed scoring: points for clicking Waldo, scaled by time remaining,
+//! with a penalty per wrong click.
 
 pub const MAX_SCORE: u32 = 5000;
 pub const MISS_PENALTY: u32 = 150;
 
-/// How close (in world units) a click must land to Waldo to count as finding
-/// him. Generous on purpose — he is ~1 unit tall.
+/// Max distance from Waldo for a click to count as finding him.
 pub const WALDO_HIT_RADIUS: f32 = 1.2;
 
-/// `time_left_frac`: fraction of the round remaining when Waldo was clicked
-/// (1.0 = instant, 0.0 = at the buzzer). `misses`: wrong clicks this round.
-/// Returns 0 if Waldo was never found.
+/// `time_left_frac` is the fraction of round time remaining at the find.
 pub fn score_find(found: bool, time_left_frac: f32, misses: u32) -> u32 {
     if !found || !time_left_frac.is_finite() {
         return 0;
@@ -51,7 +46,6 @@ mod tests {
     fn misses_cost_points() {
         assert_eq!(score_find(true, 1.0, 1), MAX_SCORE - MISS_PENALTY);
         assert!(score_find(true, 0.5, 3) < score_find(true, 0.5, 0));
-        // spam-clicking bottoms out at zero, never negative
         assert_eq!(score_find(true, 0.1, 100), 0);
     }
 

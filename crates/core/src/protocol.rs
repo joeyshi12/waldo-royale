@@ -1,5 +1,4 @@
-//! Wire protocol between browser clients and the lobby server.
-//! JSON over WebSocket, tagged by `type`.
+//! Client/server protocol: JSON over WebSocket, tagged by `type`.
 
 use serde::{Deserialize, Serialize};
 
@@ -42,8 +41,7 @@ pub enum ClientMsg {
     Configure { rounds: u32, round_secs: u32 },
     /// Host only: start the game.
     Start,
-    /// Click somewhere on the planet, claiming Waldo is there
-    /// (planet-local coordinates). The server judges hit or miss.
+    /// Claim Waldo is at this planet-local position; the server judges.
     Click { pos: [f32; 3] },
 }
 
@@ -63,13 +61,13 @@ pub enum ServerMsg {
     },
     /// Personal verdict on your click.
     ClickResult { hit: bool, score: u32, misses: u32 },
-    /// Someone found Waldo (drives the "2/4 found him" indicator).
+    /// Someone found Waldo.
     PlayerFound { id: u32, found: u32, total: u32 },
     RoundResult {
         round: u32,
         waldo: [f32; 3],
         results: Vec<RoundEntry>,
-        /// ms until the next round starts (or the win screen, on the last round).
+        /// ms until the next round or the win screen.
         next_in_ms: u64,
     },
     GameOver { leaderboard: Vec<Standing> },
@@ -80,7 +78,7 @@ pub struct RoundEntry {
     pub id: u32,
     pub name: String,
     pub found: bool,
-    /// ms into the round when Waldo was clicked (-1 if never found).
+    /// ms into the round when Waldo was clicked, -1 if never found.
     pub time_ms: i64,
     pub misses: u32,
     pub score: u32,

@@ -1,6 +1,5 @@
-//! End-to-end test: boots the real server binary, connects two WebSocket
-//! players, and plays a full 2-round game — verifying lobby flow, shared
-//! seeds, authoritative scoring, and the final leaderboard.
+//! End-to-end test: boots the server binary and plays a full two-player
+//! game over WebSocket.
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -55,7 +54,6 @@ async fn start_server() -> ServerGuard {
         .env("WALDO_INTERMISSION_MS", "200")
         .spawn()
         .expect("spawn server");
-    // wait for it to accept connections
     for _ in 0..50 {
         if TcpStream::connect(("127.0.0.1", PORT)).await.is_ok() {
             return ServerGuard(child);
@@ -85,13 +83,11 @@ async fn two_players_full_game() {
     let lobby_a = recv_type(&mut alice, "lobby").await; // membership update
     assert_eq!(lobby_a["players"].as_array().unwrap().len(), 2);
 
-    // --- host configures: 2 rounds, minimum time ---
     send(&mut alice, json!({"type": "configure", "rounds": 2, "round_secs": 10})).await;
     let cfg = recv_type(&mut alice, "lobby").await;
     assert_eq!(cfg["config"]["rounds"], 2);
     assert_eq!(cfg["config"]["round_secs"], 10);
 
-    // non-host cannot start
     send(&mut bob, json!({"type": "start"})).await;
     let err = recv_type(&mut bob, "error").await;
     assert!(err["message"].as_str().unwrap().contains("host"));
@@ -107,8 +103,6 @@ async fn two_players_full_game() {
         assert_eq!(rs_a["seed"], rs_b["seed"], "players must share the seed");
         let seed = rs_a["seed"].as_u64().unwrap() as u32;
 
-        // both sides can derive the same world; Alice clicks Waldo directly,
-        // Bob first misses on the opposite side, then finds him
         let world = waldo_core::generate_world(seed);
         let w = world.waldo.pos;
 
@@ -128,7 +122,6 @@ async fn two_players_full_game() {
         let hit = recv_type(&mut bob, "click_result").await;
         assert_eq!(hit["hit"], true);
 
-        // everyone found ⇒ round ends early
         let res_a = recv_type(&mut alice, "round_result").await;
         let _res_b = recv_type(&mut bob, "round_result").await;
         assert_eq!(res_a["round"], round);
@@ -142,10 +135,8 @@ async fn two_players_full_game() {
         assert_eq!(alice_row["misses"], 0);
         assert_eq!(bob_row["misses"], 1);
         assert!(alice_row["time_ms"].as_i64().unwrap() >= 0);
-        // Bob was slower AND missed once — he must score lower
         assert!(bob_row["score"].as_u64().unwrap() < alice_row["score"].as_u64().unwrap());
 
-        // reported waldo position matches the locally generated world
         let rw = res_a["waldo"].as_array().unwrap();
         for k in 0..3 {
             assert!((rw[k].as_f64().unwrap() as f32 - w[k]).abs() < 1e-4);
@@ -162,7 +153,6 @@ async fn two_players_full_game() {
     assert!(lb[0]["total"].as_u64().unwrap() > lb[1]["total"].as_u64().unwrap());
     assert_eq!(over_a.to_string(), over_b.to_string());
 
-    // totals equal the sum of both rounds for Alice
     let final_total = lb[0]["total"].as_u64().unwrap();
     let last_alice_total = last_results.unwrap()["results"]
         .as_array()
@@ -177,9 +167,6 @@ async fn two_players_full_game() {
 
 #[tokio::test]
 async fn join_unknown_lobby_fails() {
-    // relies on the same server from the other test? No — spawn our own on a different port
-    // to stay independent: reuse start_server (same port) is racy, so use a raw check instead.
-    // The server from `two_players_full_game` may or may not be running; spawn one defensively.
     let _guard = start_server_on(8992).await;
     let (mut ws, _) = connect_async("ws://127.0.0.1:8992/ws").await.expect("connect");
     ws.send(Message::Text(

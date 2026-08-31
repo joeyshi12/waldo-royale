@@ -1,5 +1,5 @@
-// WebSocket client. Messages are JSON objects tagged by `type`
-// (see crates/core/src/protocol.rs — the Rust side is the source of truth).
+// WebSocket client. Messages are JSON objects tagged by `type`;
+// crates/core/src/protocol.rs is the source of truth.
 
 export class Net {
   constructor() {

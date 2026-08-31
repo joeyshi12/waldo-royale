@@ -1,6 +1,5 @@
-//! Procedural planet meshes. Every shape is built from parametric patches
-//! with analytic normals, so the exact same vertex data is produced on
-//! native (server) and wasm32 (client) from the same RNG stream.
+//! Procedural planet meshes: parametric patches with analytic normals,
+//! producing identical vertex data on native and wasm32.
 
 use crate::math::{v3, Vec3};
 use crate::rng::Rng;
@@ -64,8 +63,7 @@ where
     }
 }
 
-/// Wavy radial displacement. Recomputes normals from faces afterwards,
-/// welding coincident seam vertices and preserving outward orientation.
+/// Wavy radial displacement; recomputes welded, outward-facing normals.
 pub fn warp(mesh: &mut MeshData, rng: &mut Rng, amp: f32) {
     let f1 = rng.range(0.2, 0.55);
     let f2 = rng.range(0.2, 0.55);
@@ -82,7 +80,6 @@ pub fn warp(mesh: &mut MeshData, rng: &mut Rng, amp: f32) {
         mesh.positions[i * 3 + 2] = q.z;
     }
 
-    // accumulate face normals per welded position
     let key = |p: Vec3| -> (i32, i32, i32) {
         (
             (p.x * 64.0).round() as i32,
@@ -105,7 +102,6 @@ pub fn warp(mesh: &mut MeshData, rng: &mut Rng, amp: f32) {
     }
     for i in 0..mesh.vertex_count() {
         let mut n = acc[&key(mesh.position(i))].normalize();
-        // keep pointing the same way as before the warp (outward)
         let old = v3(old_normals[i * 3], old_normals[i * 3 + 1], old_normals[i * 3 + 2]);
         if n.dot(old) < 0.0 {
             n = n.scale(-1.0);
@@ -214,7 +210,6 @@ fn cube(rng: &mut Rng) -> (MeshData, &'static str) {
         rng.range(5.0, 8.5),
     ];
     let mut m = MeshData::default();
-    // (axis, sign): axis is the face normal direction
     for (axis, sign) in [(0, 1.0f32), (0, -1.0), (1, 1.0), (1, -1.0), (2, 1.0), (2, -1.0)] {
         let (a1, a2) = ((axis + 1) % 3, (axis + 2) % 3);
         add_patch(
@@ -224,7 +219,7 @@ fn cube(rng: &mut Rng) -> (MeshData, &'static str) {
             move |u, v| {
                 let mut c = [0.0f32; 3];
                 c[axis] = h[axis] * sign;
-                c[a1] = h[a1] * (u * 2.0 - 1.0) * sign; // flip u with sign for outward winding
+                c[a1] = h[a1] * (u * 2.0 - 1.0) * sign;
                 c[a2] = h[a2] * (v * 2.0 - 1.0);
                 v3(c[0], c[1], c[2])
             },
@@ -392,7 +387,6 @@ mod tests {
 
     #[test]
     fn all_shapes_valid() {
-        // enough seeds to hit every shape family + wobble branch
         for seed in 0..40u64 {
             let mut rng = Rng::new(seed);
             let s = build_shape(&mut rng);

@@ -1,5 +1,4 @@
-//! Minimal 3D math — just what worldgen needs. Kept dependency-free for
-//! identical behavior on native and wasm32.
+//! Minimal dependency-free 3D math for worldgen.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vec3 {
@@ -51,7 +50,7 @@ impl Vec3 {
     }
 }
 
-/// Quaternion (x, y, z, w) — same convention as Three.js.
+/// Quaternion (x, y, z, w), same convention as Three.js.
 #[derive(Clone, Copy, Debug)]
 pub struct Quat {
     pub x: f32,
@@ -63,8 +62,7 @@ pub struct Quat {
 impl Quat {
     pub const IDENTITY: Quat = Quat { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 
-    /// Rotation taking unit vector `from` to unit vector `to`
-    /// (same algorithm as Three.js `setFromUnitVectors`).
+    /// Rotation taking unit vector `from` to `to` (Three.js `setFromUnitVectors`).
     pub fn from_unit_vectors(from: Vec3, to: Vec3) -> Quat {
         let r = from.dot(to) + 1.0;
         if r < 1e-8 {
@@ -114,7 +112,6 @@ mod tests {
     #[test]
     fn from_unit_vectors_rotates() {
         let q = Quat::from_unit_vectors(Vec3::Y, v3(1.0, 0.0, 0.0));
-        // rotate Y by q manually: v' = q * v * q^-1 — spot check via matrix-free formula
         let v = Vec3::Y;
         let u = v3(q.x, q.y, q.z);
         let rotated = u
