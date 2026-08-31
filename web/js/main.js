@@ -57,7 +57,7 @@ function renderLobby(msg) {
   $('#playerList').innerHTML = players.map((p, i) => `
     <li><span><span class="swatch" style="background:${PLAYER_COLORS[i % PLAYER_COLORS.length]}"></span>
     ${escapeHtml(p.name)}${p.id === myId ? ' (you)' : ''}</span>
-    ${p.is_host ? '<span class="host-tag">HOST</span>' : ''}</li>`).join('');
+    ${p.is_host ? '<span class="host-tag">Host</span>' : ''}</li>`).join('');
   $('#hostControls').style.display = isHost ? 'block' : 'none';
   $('#waitingMsg').style.display = isHost ? 'none' : 'block';
   $('#roundsSel').value = String(msg.config.rounds);
@@ -145,7 +145,7 @@ net
     const myRank = lb.findIndex((s) => s.id === myId);
     const iWon = myRank === 0;
     $('#trophy').textContent = iWon ? '🏆' : ['', '🥈', '🥉'][myRank] ?? '😔';
-    $('#winnerName').textContent = iWon ? 'YOU WIN!' : (lb[0]?.name ?? 'Nobody') + ' wins';
+    $('#winnerName').textContent = iWon ? 'You win!' : (lb[0]?.name ?? 'Nobody') + ' wins';
     $('#winnerName').style.color = iWon ? '#ffe14a' : '#b9c0d8';
     $('#finalSub').textContent = iWon
       ? 'champion of the galaxy'
