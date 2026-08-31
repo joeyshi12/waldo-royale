@@ -98,7 +98,7 @@
   #foundCount { bottom: 76px; left: 50%; transform: translateX(-50%); font-size: 12px;
     opacity: 0.8; background: rgba(10,14,40,0.65); padding: 5px 14px; border-radius: 999px; }
 
-  #toast { top: 78px; left: 50%; transform: translateX(-50%); font-size: 14px; font-weight: bold;
+  #toast { position: fixed; top: 78px; left: 50%; transform: translateX(-50%); font-size: 14px; font-weight: bold;
     padding: 8px 20px; border-radius: 10px; background: rgba(200,40,40,0.92);
     opacity: 0; transition: opacity 0.25s; pointer-events: none; z-index: 50; }
   #toast.show { opacity: 1; }
@@ -226,6 +226,6 @@
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
-<script type="module" src="./js/main.js?v=0.1.4"></script>
+<script type="module" src="./js/main.js?v=0.1.5"></script>
 </body>
 </html>
