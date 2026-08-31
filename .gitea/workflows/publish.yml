@@ -1,23 +1,21 @@
 name: Publish image
 
-# Builds and publishes ghcr.io/<owner>/waldo-royale whenever the workspace
-# version in Cargo.toml changes on main. The image tag is the version itself
-# (plus a moving `latest` tag). If the tag already exists in the registry,
-# the build is skipped — so ordinary commits don't publish anything.
+# Builds and publishes registry.internal/waldo-royale whenever the
+# workspace version in Cargo.toml changes on main. The image tag is the
+# version itself (plus a moving `latest` tag). If the tag already exists in
+# the registry, the build is skipped — ordinary commits publish nothing.
 
 on:
   push:
     branches: [main]
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  REGISTRY: registry.internal
+  IMAGE: registry.internal/waldo-royale
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,12 +27,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Workspace version: $VERSION"
 
-      - name: Log in to GHCR
+      - name: Log in to Gitea registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: registry.internal
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Check whether this version is already published
         id: exists
@@ -59,5 +57,3 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max

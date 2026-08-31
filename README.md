@@ -80,11 +80,13 @@ docker compose up -d   # builds the image, serves on :8017
 
 ## Releases
 
-CI (`.github/workflows/ci.yml`) runs the test suite on every push and PR.
+CI (`.gitea/workflows/ci.yml`) runs the test suite on every push and PR.
 
-Publishing (`.github/workflows/publish.yml`) is driven by the workspace
+Publishing (`.gitea/workflows/publish.yml`) is driven by the workspace
 version in `Cargo.toml`: bump it and push to `main`, and the workflow builds
-and pushes `ghcr.io/joeyshi12/waldo-royale:<version>` (and `:latest`) to the
-GitHub Container Registry. Pushes that don't change the version publish
+and pushes `registry.internal/waldo-royale:<version>` (and `:latest`) to
+the Gitea container registry. Pushes that don't change the version publish
 nothing — the workflow skips when the version tag already exists.
+Registry credentials come from the repo actions secrets `REGISTRY_USER` /
+`REGISTRY_TOKEN`.
 
