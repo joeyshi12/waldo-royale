@@ -177,6 +177,15 @@ function setMode(m) {
 $('#btnRotate').onclick = () => setMode('rotate');
 $('#btnPoint').onclick = () => setMode('point');
 
+// keyboard shortcuts: 1 = rotate, 2 = point
+addEventListener('keydown', (e) => {
+  if (!playing) return;
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (e.key === '1') setMode('rotate');
+  else if (e.key === '2') setMode('point');
+});
+
 let dragging = false, px = 0, py = 0;
 const pointers = new Map();
 let pinchDist = 0, lastPinch = -1000;

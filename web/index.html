@@ -76,6 +76,10 @@
     font-weight: bold; letter-spacing: 0.5px; background: transparent;
     color: rgba(255,255,255,0.65); transition: background 0.15s, color 0.15s; }
   #modes button.active { background: #ff5a5a; color: #fff; }
+  #modes kbd {
+    font-family: inherit; font-size: 10px; padding: 1px 5px; margin-left: 4px;
+    border-radius: 4px; border: 1px solid currentColor; opacity: 0.65;
+  }
 
   #zoomer { bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; }
   #zoomer button { width: 44px; height: 44px; border-radius: 50%;
@@ -176,8 +180,8 @@
   <div class="hud" id="roundInfo">Round <span id="roundNum">1</span>/<span id="roundTotal">3</span>
     <small id="shapeName"></small></div>
   <div class="hud" id="modes">
-    <button id="btnRotate" class="active">&#8635; ROTATE</button>
-    <button id="btnPoint">&#10132; POINT</button>
+    <button id="btnRotate" class="active">&#8635; ROTATE <kbd>1</kbd></button>
+    <button id="btnPoint">&#10132; POINT <kbd>2</kbd></button>
   </div>
   <div class="hud" id="timerWrap">
     <div id="timerText">1:30</div>
