@@ -1,0 +1,10 @@
+# Standalone deployment: builds the image and serves the game on :8017.
+# (On hosts with a reverse proxy, drop `ports` and attach the service to
+# your proxy network instead — see README.)
+services:
+  waldo-royale:
+    build: .
+    container_name: waldo-royale
+    restart: unless-stopped
+    ports:
+      - "8017:8080"

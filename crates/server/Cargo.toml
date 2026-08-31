@@ -1,0 +1,17 @@
+[package]
+name = "waldo-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+waldo-core = { path = "../core" }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tower-http = { version = "0.6", features = ["fs"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+waldo-core = { path = "../core" }

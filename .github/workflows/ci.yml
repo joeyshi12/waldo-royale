@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run test suite
+        run: cargo test --workspace
+
+      - name: Check client JS syntax
+        run: |
+          for f in web/js/*.js; do node --check "$f"; done

@@ -1,0 +1,127 @@
+//! Wire protocol between browser clients and the lobby server.
+//! JSON over WebSocket, tagged by `type`.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct Config {
+    pub rounds: u32,
+    pub round_secs: u32,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config { rounds: 3, round_secs: 90 }
+    }
+}
+
+impl Config {
+    pub fn clamped(self) -> Config {
+        Config {
+            rounds: self.rounds.clamp(1, 10),
+            round_secs: self.round_secs.clamp(10, 300),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PlayerInfo {
+    pub id: u32,
+    pub name: String,
+    pub is_host: bool,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ClientMsg {
+    /// Create a lobby and become its host.
+    Create { name: String },
+    /// Join an existing lobby by code.
+    Join { code: String, name: String },
+    /// Host only: change game settings while in the lobby.
+    Configure { rounds: u32, round_secs: u32 },
+    /// Host only: start the game.
+    Start,
+    /// Click somewhere on the planet, claiming Waldo is there
+    /// (planet-local coordinates). The server judges hit or miss.
+    Click { pos: [f32; 3] },
+}
+
+#[derive(Serialize, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ServerMsg {
+    Error { message: String },
+    /// Sent on join and whenever lobby membership / settings change.
+    Lobby { code: String, you: u32, players: Vec<PlayerInfo>, config: Config },
+    RoundStart {
+        round: u32,
+        total_rounds: u32,
+        seed: u32,
+        round_secs: u32,
+        /// Server timestamp (ms since epoch) when the round ends.
+        ends_at_ms: u64,
+    },
+    /// Personal verdict on your click.
+    ClickResult { hit: bool, score: u32, misses: u32 },
+    /// Someone found Waldo (drives the "2/4 found him" indicator).
+    PlayerFound { id: u32, found: u32, total: u32 },
+    RoundResult {
+        round: u32,
+        waldo: [f32; 3],
+        results: Vec<RoundEntry>,
+        /// ms until the next round starts (or the win screen, on the last round).
+        next_in_ms: u64,
+    },
+    GameOver { leaderboard: Vec<Standing> },
+}
+
+#[derive(Serialize, Debug)]
+pub struct RoundEntry {
+    pub id: u32,
+    pub name: String,
+    pub found: bool,
+    /// ms into the round when Waldo was clicked (-1 if never found).
+    pub time_ms: i64,
+    pub misses: u32,
+    pub score: u32,
+    pub total: u32,
+}
+
+#[derive(Serialize, Debug)]
+pub struct Standing {
+    pub id: u32,
+    pub name: String,
+    pub total: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_msg_roundtrip() {
+        let m: ClientMsg =
+            serde_json::from_str(r#"{"type":"join","code":"ABCD","name":"joey"}"#).unwrap();
+        assert!(matches!(m, ClientMsg::Join { .. }));
+        let m: ClientMsg =
+            serde_json::from_str(r#"{"type":"click","pos":[1.0,2.0,3.0]}"#).unwrap();
+        assert!(matches!(m, ClientMsg::Click { pos } if pos == [1.0, 2.0, 3.0]));
+    }
+
+    #[test]
+    fn server_msg_serializes_with_tag() {
+        let s = serde_json::to_string(&ServerMsg::PlayerFound { id: 1, found: 2, total: 4 })
+            .unwrap();
+        assert!(s.contains(r#""type":"player_found""#));
+        let s = serde_json::to_string(&ServerMsg::ClickResult { hit: true, score: 4200, misses: 1 })
+            .unwrap();
+        assert!(s.contains(r#""type":"click_result""#));
+    }
+
+    #[test]
+    fn config_clamps() {
+        let c = Config { rounds: 99, round_secs: 1 }.clamped();
+        assert_eq!(c.rounds, 10);
+        assert_eq!(c.round_secs, 10);
+    }
+}
