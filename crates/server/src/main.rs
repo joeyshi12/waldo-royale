@@ -26,7 +26,7 @@ use axum::{
     Router,
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use waldo_core::{
     math::v3,
     protocol::{ClientMsg, Config, PlayerInfo, RoundEntry, ServerMsg, Standing},
@@ -480,6 +480,12 @@ async fn main() {
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .fallback_service(ServeDir::new(&dir))
+        // game code changes often and is small: force CDN/browser revalidation
+        // so players never run a stale client after a deploy
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-cache"),
+        ))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
