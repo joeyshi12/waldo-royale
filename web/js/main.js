@@ -147,7 +147,6 @@ net
     $('#trophy').textContent = iWon ? '🏆' : ['', '🥈', '🥉'][myRank] ?? '😔';
     $('#winnerName').textContent = iWon ? 'YOU WIN!' : (lb[0]?.name ?? 'Nobody') + ' wins';
     $('#winnerName').style.color = iWon ? '#ffe14a' : '#b9c0d8';
-    $('#winnerName').style.textShadow = iWon ? '0 0 24px rgba(255,225,74,0.55)' : 'none';
     $('#finalSub').textContent = iWon
       ? 'champion of the galaxy'
       : `you finished ${['1st', '2nd', '3rd'][myRank] ?? `${myRank + 1}th`} of ${lb.length}`;

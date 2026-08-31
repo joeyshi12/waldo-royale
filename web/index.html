@@ -35,9 +35,9 @@
   .btn {
     width: 100%; padding: 13px; margin-top: 6px; border: none; border-radius: 999px;
     font-size: 15px; font-weight: bold; letter-spacing: 0.5px;
-    background: #ff5a5a; color: #fff; box-shadow: 0 4px 16px rgba(255,90,90,0.4);
+    background: #ff5a5a; color: #fff;
   }
-  .btn.secondary { background: rgba(255,255,255,0.12); box-shadow: none; }
+  .btn.secondary { background: rgba(255,255,255,0.12); }
   .btn:disabled { opacity: 0.45; cursor: default; }
   .split { display: flex; gap: 10px; }
   .split > * { flex: 1; }
@@ -74,7 +74,7 @@
 
   #modes { top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px;
     background: rgba(10,14,40,0.65); border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 999px; padding: 5px; backdrop-filter: blur(6px); }
+    border-radius: 999px; padding: 5px; }
   #modes button { border: none; border-radius: 999px; padding: 9px 18px; font-size: 13px;
     font-weight: bold; letter-spacing: 0.5px; background: transparent;
     color: rgba(255,255,255,0.65); transition: background 0.15s, color 0.15s; }
@@ -87,12 +87,11 @@
   #zoomer { bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; }
   #zoomer button { width: 44px; height: 44px; border-radius: 50%;
     border: 1px solid rgba(255,255,255,0.2); background: rgba(10,14,40,0.65);
-    color: #fff; font-size: 24px; line-height: 1; backdrop-filter: blur(6px); }
+    color: #fff; font-size: 24px; line-height: 1; }
 
   #foundBanner { bottom: 18px; left: 50%; transform: translateX(-50%);
     padding: 13px 42px; border-radius: 999px; font-size: 15px; font-weight: bold;
-    letter-spacing: 1px; background: #ffe14a; color: #1a1a2e;
-    box-shadow: 0 4px 20px rgba(255,225,74,0.4); }
+    letter-spacing: 1px; background: #ffe14a; color: #1a1a2e; }
   #foundBanner span { font-weight: normal; }
 
   #foundCount { bottom: 76px; left: 50%; transform: translateX(-50%); font-size: 12px;
@@ -116,8 +115,7 @@
   #final h1 { text-align: center; }
   #trophy { font-size: 64px; animation: bounce 1.2s ease-in-out infinite; }
   @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-  #winnerName { font-size: 34px; color: #ffe14a; text-shadow: 0 0 24px rgba(255,225,74,0.55);
-    margin-top: 4px; }
+  #winnerName { font-size: 34px; color: #ffe14a; margin-top: 4px; }
   #podium { list-style: none; margin: 18px 0; }
   #podium li { display: flex; justify-content: space-between; padding: 10px 14px;
     border-radius: 10px; margin-bottom: 6px; background: rgba(255,255,255,0.07); font-size: 15px; }
@@ -226,6 +224,6 @@
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
-<script type="module" src="./js/main.js?v=0.1.6"></script>
+<script type="module" src="./js/main.js?v=0.1.7"></script>
 </body>
 </html>

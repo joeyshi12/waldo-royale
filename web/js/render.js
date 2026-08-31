@@ -302,12 +302,20 @@ export class GameRenderer {
   }
 
   // ----- guessing -----
-  /** Raycast the planet surface; returns planet-local {pos, normal} or null. */
+  /** Raycast the planet surface and Waldo; returns planet-local {pos, normal} or null. */
   pickSurface(clientX, clientY) {
     this.pointerV.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     this.raycaster.setFromCamera(this.pointerV, this.camera);
-    const hit = this.raycaster.intersectObject(this.ground, false)[0];
+    const hit = this.raycaster.intersectObjects([this.ground, this.waldo], true)[0];
     if (!hit) return null;
+    // a click anywhere on Waldo's model counts as his location, even at
+    // glancing angles where the ray would land on the ground far behind him
+    for (let o = hit.object; o; o = o.parent) {
+      if (o === this.waldo) {
+        const pos = this.waldo.position.clone();
+        return { pos, normal: pos.clone().normalize() };
+      }
+    }
     const pos = this.planet.worldToLocal(hit.point.clone());
     const normal = hit.face ? hit.face.normal.clone() : pos.clone().normalize();
     return { pos, normal };
