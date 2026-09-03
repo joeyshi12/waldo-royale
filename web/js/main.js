@@ -86,13 +86,14 @@ net
       || $('#results').classList.contains('show');
     if (!inFlow) showScreen('#lobby');
   })
-  .on('round_start', (m) => {
+  .on('round_start', async (m) => {
     playing = true;
     found = false;
     lastPick = null;
     roundMs = m.round_secs * 1000;
     roundEndsAt = Math.min(m.ends_at_ms, Date.now() + roundMs);
 
+    await R.assetsReady; // models load once, at startup; no-op afterwards
     world = generate_world(m.seed);
     currentMeta = JSON.parse(world.metaJson());
     R.buildWorld(world, currentMeta);

@@ -3,6 +3,8 @@
 // and players rotate the planet itself.
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/meshopt_decoder.module.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -58,6 +60,77 @@ function stripeTexture() {
 }
 
 // per-kind scenery geometry and materials
+// Kenney CC0 models (kenney.nl); variants cycle per instance for variety.
+const MODEL_VARIANTS = {
+  pine: ['tree_pineDefaultA', 'tree_pineDefaultB', 'tree_pineRoundA', 'tree_pineRoundC', 'tree_pineTallA'],
+  tree: ['tree_default', 'tree_default_dark', 'tree_oak', 'tree_detailed', 'tree_fat'],
+  bush: ['plant_bush', 'plant_bushLarge', 'plant_bushDetailed', 'flower_redA', 'mushroom_red'],
+  building: ['building-a', 'building-b', 'building-c', 'building-d', 'building-e', 'building-f', 'building-g', 'building-h'],
+  tower: ['building-skyscraper-a', 'building-skyscraper-b', 'building-skyscraper-c', 'building-skyscraper-d', 'building-skyscraper-e'],
+  house: ['building-type-a', 'building-type-b', 'building-type-c', 'building-type-d', 'building-type-e', 'building-type-f', 'building-type-g', 'building-type-h'],
+  dome: ['detail-parasol-a', 'detail-parasol-b'],
+  car: ['sedan', 'suv', 'taxi', 'van', 'police', 'hatchback-sports', 'sedan-sports', 'truck'],
+  rock: ['rock_largeA', 'rock_largeB', 'rock_largeC', 'rock_tallA', 'rock_tallB', 'rock_smallA'],
+};
+
+// world-space height of each kind at placement scale 1 (models are
+// normalized to unit height on load)
+const KIND_SIZE = {
+  pine: 1.25, tree: 0.9, bush: 0.32, building: 1.05, tower: 1.15,
+  house: 0.9, dome: 0.55, car: 0.24, rock: 0.4,
+};
+
+async function loadModels() {
+  const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  const matCache = new Map();
+  const toLambert = (src) => {
+    if (matCache.has(src.uuid)) return matCache.get(src.uuid);
+    const m = new THREE.MeshLambertMaterial({
+      map: src.map ?? null,
+      color: src.color ? src.color.clone() : 0xffffff,
+      vertexColors: !!src.vertexColors,
+    });
+    matCache.set(src.uuid, m);
+    return m;
+  };
+
+  const names = [...new Set(Object.values(MODEL_VARIANTS).flat())];
+  const files = await Promise.all(
+    names.map((n) => loader.loadAsync(`assets/models/${n}.glb`))
+  );
+
+  const byName = {};
+  names.forEach((name, i) => {
+    const scene = files[i].scene;
+    scene.updateMatrixWorld(true);
+    // normalize: base at y=0, centered on x/z, unit height
+    const box = new THREE.Box3().setFromObject(scene);
+    const h = Math.max(box.max.y - box.min.y, 1e-4);
+    const norm = new THREE.Matrix4()
+      .makeScale(1 / h, 1 / h, 1 / h)
+      .multiply(new THREE.Matrix4().makeTranslation(
+        -(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2));
+    const parts = [];
+    scene.traverse((o) => {
+      if (o.isMesh) {
+        parts.push({
+          geometry: o.geometry,
+          material: toLambert(o.material),
+          local: new THREE.Matrix4().multiplyMatrices(norm, o.matrixWorld),
+        });
+      }
+    });
+    byName[name] = { parts };
+  });
+
+  const models = {};
+  for (const [kind, variants] of Object.entries(MODEL_VARIANTS)) {
+    models[kind] = variants.map((n) => byName[n]);
+  }
+  return models;
+}
+
 function kindParts(stripes) {
   const lam = (opts) => new THREE.MeshLambertMaterial(opts);
   const g = {
@@ -99,25 +172,47 @@ function kindParts(stripes) {
 function buildWaldo(stripes) {
   const grp = new THREE.Group();
   const lam = (o) => new THREE.MeshLambertMaterial(o);
-  const skin = lam({ color: 0xf2c896 }), blue = lam({ color: 0x2b4fd6 });
-  const striped = lam({ map: stripes }), dark = lam({ color: 0x3a2a1a });
-  const add = (geo, mat, y, extra) => {
+  const skin = lam({ color: 0xf2c896 }), jeans = lam({ color: 0x3558c4 });
+  const striped = lam({ map: stripes }), hair = lam({ color: 0x4a3220 });
+  const dark = lam({ color: 0x2a2a2e }), red = lam({ color: 0xe02020 });
+  const white = lam({ color: 0xffffff }), brown = lam({ color: 0x8a5a2b });
+  const add = (geo, mat, x, y, z, rot) => {
     const m = new THREE.Mesh(geo, mat);
-    m.position.y = y;
-    if (extra) extra(m);
+    m.position.set(x, y, z);
+    if (rot) m.rotation.set(rot[0], rot[1], rot[2]);
     grp.add(m);
     return m;
   };
-  add(new THREE.CylinderGeometry(0.085, 0.095, 0.18, 10), blue, 0.09);
-  add(new THREE.CylinderGeometry(0.1, 0.11, 0.24, 12), striped, 0.30);
-  add(new THREE.CylinderGeometry(0.032, 0.032, 0.2, 8), striped, 0.33,
-    (m) => { m.position.x = 0.13; m.rotation.z = 0.35; });
-  add(new THREE.CylinderGeometry(0.032, 0.032, 0.2, 8), striped, 0.33,
-    (m) => { m.position.x = -0.13; m.rotation.z = -0.35; });
-  add(new THREE.SphereGeometry(0.095, 14, 12), skin, 0.52);
-  add(new THREE.SphereGeometry(0.098, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45), dark, 0.535);
-  add(new THREE.CylinderGeometry(0.075, 0.09, 0.09, 12), striped, 0.615);
-  add(new THREE.SphereGeometry(0.035, 8, 8), lam({ color: 0xe02020 }), 0.665);
+
+  // shoes and jeans
+  add(new THREE.BoxGeometry(0.055, 0.03, 0.09), dark, 0.042, 0.015, 0.012);
+  add(new THREE.BoxGeometry(0.055, 0.03, 0.09), dark, -0.042, 0.015, 0.012);
+  add(new THREE.CylinderGeometry(0.026, 0.03, 0.17, 8), jeans, 0.042, 0.115, 0);
+  add(new THREE.CylinderGeometry(0.026, 0.03, 0.17, 8), jeans, -0.042, 0.115, 0);
+
+  // striped shirt, slightly tapered, with angled arms and skin hands
+  add(new THREE.CylinderGeometry(0.082, 0.098, 0.22, 12), striped, 0, 0.31, 0);
+  add(new THREE.CylinderGeometry(0.026, 0.03, 0.19, 8), striped, 0.115, 0.32, 0, [0, 0, 0.42]);
+  add(new THREE.CylinderGeometry(0.026, 0.03, 0.19, 8), striped, -0.115, 0.32, 0, [0, 0, -0.42]);
+  add(new THREE.SphereGeometry(0.026, 8, 6), skin, 0.156, 0.235, 0);
+  add(new THREE.SphereGeometry(0.026, 8, 6), skin, -0.156, 0.235, 0);
+
+  // head, hair, round glasses
+  add(new THREE.SphereGeometry(0.085, 14, 12), skin, 0, 0.5, 0);
+  add(new THREE.SphereGeometry(0.088, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), hair, 0, 0.512, -0.008);
+  const lens = new THREE.TorusGeometry(0.026, 0.007, 6, 14);
+  add(lens, dark, 0.037, 0.505, 0.078);
+  add(lens, dark, -0.037, 0.505, 0.078);
+  add(new THREE.BoxGeometry(0.024, 0.008, 0.008), dark, 0, 0.508, 0.082);
+
+  // bobble hat: white brim, striped dome, red pom
+  add(new THREE.CylinderGeometry(0.088, 0.09, 0.035, 12), white, 0, 0.573, 0);
+  add(new THREE.CylinderGeometry(0.065, 0.086, 0.07, 12), striped, 0, 0.62, 0);
+  add(new THREE.SphereGeometry(0.028, 8, 8), red, 0, 0.665, 0);
+
+  // walking cane
+  add(new THREE.CylinderGeometry(0.009, 0.009, 0.3, 6), brown, 0.185, 0.14, 0.02, [0, 0, -0.12]);
+
   return grp;
 }
 
@@ -160,6 +255,10 @@ export class GameRenderer {
 
     this.stripes = stripeTexture();
     this.kinds = kindParts(this.stripes);
+    this.models = null;
+    this.assetsReady = loadModels()
+      .then((m) => { this.models = m; })
+      .catch((e) => { console.warn('model load failed, using primitives', e); });
     this.disposables = [];
 
     this.ground = new THREE.Mesh(
@@ -262,9 +361,37 @@ export class GameRenderer {
     const M = new THREE.Matrix4(), P = new THREE.Vector3(),
           Q = new THREE.Quaternion(), S = new THREE.Vector3(), C = new THREE.Color();
     meta.sets.forEach((set, si) => {
-      const parts = this.kinds[set.kind];
-      if (!parts || set.count === 0) return;
+      if (set.count === 0) return;
       const t = handle.setTransforms(si);
+
+      // model-based kinds: cycle variants per instance for variety
+      const variants = this.models?.[set.kind];
+      if (variants) {
+        const size = KIND_SIZE[set.kind] ?? 1;
+        const byVariant = Array.from({ length: variants.length }, () => []);
+        for (let i = 0; i < set.count; i++) byVariant[i % variants.length].push(i);
+        byVariant.forEach((idxs, v) => {
+          if (!idxs.length) return;
+          for (const part of variants[v].parts) {
+            const im = new THREE.InstancedMesh(part.geometry, part.material, idxs.length);
+            idxs.forEach((i, j) => {
+              const o = i * 10;
+              P.set(t[o], t[o + 1], t[o + 2]);
+              Q.set(t[o + 3], t[o + 4], t[o + 5], t[o + 6]);
+              S.set(t[o + 7], t[o + 8], t[o + 9]).multiplyScalar(size);
+              im.setMatrixAt(j, M.compose(P, Q, S).multiply(part.local));
+            });
+            im.instanceMatrix.needsUpdate = true;
+            this.planet.add(im);
+            this.disposables.push(im);
+          }
+        });
+        return;
+      }
+
+      // primitive kinds (pond, decoy) and fallback when models are unavailable
+      const parts = this.kinds[set.kind];
+      if (!parts) return;
       const colorStreams = [null, handle.setColors(si), handle.setColors2(si)];
       for (const part of parts) {
         const im = new THREE.InstancedMesh(part.geo, part.mat, set.count);

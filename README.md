@@ -8,6 +8,8 @@ World generation and scoring live in a Rust crate compiled both to WASM for
 the browser and natively for the server, so every player sees the identical
 world from a shared seed and the server scores clicks authoritatively.
 
+Scenery models are from [Kenney](https://kenney.nl) (CC0).
+
 ## Gameplay
 
 1. Host creates a lobby and shares the 4-letter code.
