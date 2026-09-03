@@ -56,11 +56,14 @@ pub enum ServerMsg {
         total_rounds: u32,
         seed: u32,
         round_secs: u32,
+        /// Round modifier: "", "night", "lightning", "crowded" or "tiny".
+        mutator: String,
         /// Server timestamp (ms since epoch) when the round ends.
         ends_at_ms: u64,
     },
-    /// Personal verdict on your click.
-    ClickResult { hit: bool, score: u32, misses: u32 },
+    /// Personal verdict on your click. `target` is who you hit:
+    /// "waldo", "wenda", "woof", "wizard", "odlaw" or "miss".
+    ClickResult { target: String, points: i32, round_score: u32, misses: u32 },
     /// Someone found Waldo.
     PlayerFound { id: u32, found: u32, total: u32 },
     RoundResult {
@@ -78,9 +81,13 @@ pub struct RoundEntry {
     pub id: u32,
     pub name: String,
     pub found: bool,
+    /// Finish order for Waldo this round (1-based), 0 if never found.
+    pub rank: u32,
     /// ms into the round when Waldo was clicked, -1 if never found.
     pub time_ms: i64,
     pub misses: u32,
+    /// Net cast bonus (Wenda/Woof/Wizard minus Odlaw), can be negative.
+    pub bonus: i32,
     pub score: u32,
     pub total: u32,
 }
@@ -111,9 +118,12 @@ mod tests {
         let s = serde_json::to_string(&ServerMsg::PlayerFound { id: 1, found: 2, total: 4 })
             .unwrap();
         assert!(s.contains(r#""type":"player_found""#));
-        let s = serde_json::to_string(&ServerMsg::ClickResult { hit: true, score: 4200, misses: 1 })
-            .unwrap();
+        let s = serde_json::to_string(&ServerMsg::ClickResult {
+            target: "wenda".into(), points: 100, round_score: 1100, misses: 1,
+        })
+        .unwrap();
         assert!(s.contains(r#""type":"click_result""#));
+        assert!(s.contains(r#""target":"wenda""#));
     }
 
     #[test]

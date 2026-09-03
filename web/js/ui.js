@@ -6,9 +6,10 @@ export function showScreen(id) {
   if (id) $(id).classList.add('show');
 }
 
-export function toast(msg, ms = 1800) {
+export function toast(msg, ms = 1800, kind = 'error') {
   const t = $('#toast');
   t.textContent = msg;
+  t.classList.toggle('info', kind === 'info');
   t.classList.add('show');
   clearTimeout(t._t);
   t._t = setTimeout(() => t.classList.remove('show'), ms);

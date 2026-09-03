@@ -55,10 +55,8 @@
   #waitingMsg { text-align: center; opacity: 0.7; font-size: 13px; margin-top: 8px; }
 
   /* ---------- game ---------- */
-  #scene { position: fixed; inset: 0; display: block; touch-action: none; }
-  #scene.rotate { cursor: grab; }
-  #scene.rotate.dragging { cursor: grabbing; }
-  #scene.point { cursor: crosshair; }
+  #scene { position: fixed; inset: 0; display: block; touch-action: none; cursor: crosshair; }
+  #scene.dragging { cursor: grabbing; }
   #gameHud { display: none; }
   #gameHud.show { display: block; }
   .hud { position: fixed; z-index: 10; user-select: none; }
@@ -72,17 +70,6 @@
   #timerBar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.15); margin-top: 5px; overflow: hidden; }
   #timerFill { height: 100%; width: 100%; background: #4caf50; border-radius: 3px; }
 
-  #modes { top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px;
-    background: rgba(10,14,40,0.65); border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 999px; padding: 5px; }
-  #modes button { border: none; border-radius: 999px; padding: 9px 18px; font-size: 13px;
-    font-weight: bold; letter-spacing: 0.5px; background: transparent;
-    color: rgba(255,255,255,0.65); transition: background 0.15s, color 0.15s; }
-  #modes button.active { background: #ff5a5a; color: #fff; }
-  #modes kbd {
-    font-family: inherit; font-size: 10px; padding: 1px 5px; margin-left: 4px;
-    border-radius: 4px; border: 1px solid currentColor; opacity: 0.65;
-  }
 
   #zoomer { bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; }
   #zoomer button { width: 44px; height: 44px; border-radius: 50%;
@@ -101,6 +88,8 @@
     padding: 8px 20px; border-radius: 10px; background: rgba(200,40,40,0.92);
     opacity: 0; transition: opacity 0.25s; pointer-events: none; z-index: 50; }
   #toast.show { opacity: 1; }
+  #toast.info { background: rgba(10,14,40,0.92); color: #ffe14a;
+    border: 1px solid rgba(255,225,74,0.35); }
 
   /* ---------- results ---------- */
   #results .card, #final .card { width: min(520px, 94vw); }
@@ -124,7 +113,7 @@
 </style>
 </head>
 <body>
-<canvas id="scene" class="rotate"></canvas>
+<canvas id="scene"></canvas>
 
 <!-- menu -->
 <div class="screen show" id="menu">
@@ -180,10 +169,6 @@
 <div id="gameHud">
   <div class="hud" id="roundInfo">Round <span id="roundNum">1</span>/<span id="roundTotal">3</span>
     <small id="shapeName"></small></div>
-  <div class="hud" id="modes">
-    <button id="btnRotate" class="active">&#8635; Rotate <kbd>1</kbd></button>
-    <button id="btnPoint">&#10132; Point <kbd>2</kbd></button>
-  </div>
   <div class="hud" id="timerWrap">
     <div id="timerText">1:30</div>
     <div id="timerBar"><div id="timerFill"></div></div>
@@ -201,7 +186,7 @@
   <div class="card">
     <h1 style="font-size:22px">Round <span id="resRound">1</span> results</h1>
     <table>
-      <thead><tr><th>Player</th><th>Time</th><th style="text-align:right">Score</th><th style="text-align:right">Total</th></tr></thead>
+      <thead><tr><th>Player</th><th>Found</th><th style="text-align:right">Bonus</th><th style="text-align:right">Score</th><th style="text-align:right">Total</th></tr></thead>
       <tbody id="resRows"></tbody>
     </table>
     <div id="nextIn"></div>
@@ -224,6 +209,6 @@
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
-<script type="module" src="./js/main.js?v=0.2.0"></script>
+<script type="module" src="./js/main.js?v=0.3.0"></script>
 </body>
 </html>

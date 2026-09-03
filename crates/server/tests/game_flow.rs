@@ -101,27 +101,42 @@ async fn two_players_full_game() {
         let rs_b = recv_type(&mut bob, "round_start").await;
         assert_eq!(rs_a["round"], round);
         assert_eq!(rs_a["seed"], rs_b["seed"], "players must share the seed");
+        assert_eq!(rs_a["mutator"], rs_b["mutator"], "players must share the mutator");
         let seed = rs_a["seed"].as_u64().unwrap() as u32;
+        let mutator = rs_a["mutator"].as_str().unwrap().to_string();
 
-        let world = waldo_core::generate_world(seed);
+        // both sides derive the same world from seed + mutator
+        let world =
+            waldo_core::generate_world_opts(seed, waldo_core::mutator_opts(&mutator));
         let w = world.waldo.pos;
+        let odlaw = world.cast.iter().find(|c| c.role == "odlaw").unwrap().pos;
+        let wenda = world.cast.iter().find(|c| c.role == "wenda").unwrap().pos;
 
+        // Alice finds Waldo first (rank 1), then collects Wenda
         send(&mut alice, json!({"type": "click", "pos": [w[0], w[1], w[2]]})).await;
         let cr = recv_type(&mut alice, "click_result").await;
-        assert_eq!(cr["hit"], true);
-        assert!(cr["score"].as_u64().unwrap() > 4000, "instant find ≈ max score");
+        assert_eq!(cr["target"], "waldo");
+        assert_eq!(cr["points"], 1000, "first finder gets rank-1 points");
         let pf = recv_type(&mut alice, "player_found").await;
         assert_eq!(pf["found"], 1);
+        send(&mut alice, json!({"type": "click", "pos": [wenda[0], wenda[1], wenda[2]]})).await;
+        let cr = recv_type(&mut alice, "click_result").await;
+        assert_eq!(cr["target"], "wenda");
+        assert_eq!(cr["points"], 100);
+        assert_eq!(cr["round_score"], 1100);
 
-        send(&mut bob, json!({"type": "click", "pos": [-w[0], -w[1], -w[2]]})).await;
-        let miss = recv_type(&mut bob, "click_result").await;
-        assert_eq!(miss["hit"], false);
-        assert_eq!(miss["misses"], 1);
-
+        // Bob falls for Odlaw, then finds Waldo second
+        send(&mut bob, json!({"type": "click", "pos": [odlaw[0], odlaw[1], odlaw[2]]})).await;
+        let cr = recv_type(&mut bob, "click_result").await;
+        assert_eq!(cr["target"], "odlaw");
+        assert_eq!(cr["points"], -150);
         send(&mut bob, json!({"type": "click", "pos": [w[0], w[1], w[2]]})).await;
-        let hit = recv_type(&mut bob, "click_result").await;
-        assert_eq!(hit["hit"], true);
+        let cr = recv_type(&mut bob, "click_result").await;
+        assert_eq!(cr["target"], "waldo");
+        assert_eq!(cr["points"], 700, "second finder gets rank-2 points");
+        assert_eq!(cr["round_score"], 700 - 150);
 
+        // everyone found Waldo, so the round ends early
         let res_a = recv_type(&mut alice, "round_result").await;
         let _res_b = recv_type(&mut bob, "round_result").await;
         assert_eq!(res_a["round"], round);
@@ -130,12 +145,12 @@ async fn two_players_full_game() {
         assert_eq!(results.len(), 2);
         let alice_row = results.iter().find(|r| r["name"] == "Alice").unwrap();
         let bob_row = results.iter().find(|r| r["name"] == "Bob").unwrap();
-        assert_eq!(alice_row["found"], true);
-        assert_eq!(bob_row["found"], true);
-        assert_eq!(alice_row["misses"], 0);
-        assert_eq!(bob_row["misses"], 1);
-        assert!(alice_row["time_ms"].as_i64().unwrap() >= 0);
-        assert!(bob_row["score"].as_u64().unwrap() < alice_row["score"].as_u64().unwrap());
+        assert_eq!(alice_row["rank"], 1);
+        assert_eq!(bob_row["rank"], 2);
+        assert_eq!(alice_row["score"], 1100);
+        assert_eq!(bob_row["score"], 550);
+        assert_eq!(alice_row["bonus"], 100);
+        assert_eq!(bob_row["bonus"], -150);
 
         let rw = res_a["waldo"].as_array().unwrap();
         for k in 0..3 {

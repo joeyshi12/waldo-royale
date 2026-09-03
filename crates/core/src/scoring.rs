@@ -1,63 +1,91 @@
-//! Speed scoring: points for clicking Waldo, scaled by time remaining,
-//! with a penalty per wrong click.
+//! Rank-based round scoring: finding Waldo earns points by finish order,
+//! the supporting cast earns flat bonuses, Odlaw and wrong clicks cost you.
 
-pub const MAX_SCORE: u32 = 5000;
-pub const MISS_PENALTY: u32 = 150;
+pub const MISS_PENALTY: u32 = 25;
+pub const ODLAW_PENALTY: u32 = 150;
+pub const BONUS_WENDA: u32 = 100;
+pub const BONUS_WIZARD: u32 = 75;
+pub const BONUS_WOOF: u32 = 150; // just a tail in a bush: hardest to spot
 
-/// Max distance from Waldo for a click to count as finding him.
+/// Max distance from a character for a click to count as finding them.
 pub const WALDO_HIT_RADIUS: f32 = 1.2;
 
-/// `time_left_frac` is the fraction of round time remaining at the find.
-pub fn score_find(found: bool, time_left_frac: f32, misses: u32) -> u32 {
-    if !found || !time_left_frac.is_finite() {
-        return 0;
+/// Points for finding Waldo Nth (1-based). 0 means not found.
+pub fn rank_points(rank: u32) -> u32 {
+    match rank {
+        0 => 0,
+        1 => 1000,
+        2 => 700,
+        3 => 550,
+        4 => 450,
+        5 => 400,
+        r => 400u32.saturating_sub(25 * (r - 5)).max(250),
     }
-    let base = MAX_SCORE as f32 * time_left_frac.clamp(0.0, 1.0);
-    let penalty = (MISS_PENALTY * misses) as f32;
-    (base - penalty).max(0.0).round() as u32
 }
+
+/// Net bonus points for the round (cast finds minus Odlaw), may be negative.
+pub fn bonus_points(wenda: bool, woof: bool, wizard: bool, odlaw: bool) -> i32 {
+    (wenda as i32) * BONUS_WENDA as i32
+        + (woof as i32) * BONUS_WOOF as i32
+        + (wizard as i32) * BONUS_WIZARD as i32
+        - (odlaw as i32) * ODLAW_PENALTY as i32
+}
+
+/// Total round score, floored at zero.
+pub fn score_round(
+    found_rank: u32,
+    misses: u32,
+    wenda: bool,
+    woof: bool,
+    wizard: bool,
+    odlaw: bool,
+) -> u32 {
+    let pts = rank_points(found_rank) as i64 + bonus_points(wenda, woof, wizard, odlaw) as i64
+        - (MISS_PENALTY * misses) as i64;
+    pts.max(0) as u32
+}
+
+pub const MAX_SCORE: u32 = 1000 + BONUS_WENDA + BONUS_WIZARD + BONUS_WOOF;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn instant_find_scores_max() {
-        assert_eq!(score_find(true, 1.0, 0), MAX_SCORE);
-    }
-
-    #[test]
-    fn buzzer_beater_scores_zero_ish() {
-        assert_eq!(score_find(true, 0.0, 0), 0);
-        assert!(score_find(true, 0.01, 0) > 0);
-    }
-
-    #[test]
-    fn faster_is_better() {
-        let mut prev = MAX_SCORE + 1;
-        for i in 0..=10 {
-            let s = score_find(true, 1.0 - i as f32 / 10.0, 0);
-            assert!(s < prev);
-            prev = s;
+    fn rank_order_pays() {
+        let mut prev = u32::MAX;
+        for r in 1..=12 {
+            let p = rank_points(r);
+            assert!(p <= prev, "rank {r} should not pay more than rank {}", r - 1);
+            assert!(p >= 250);
+            if prev > 250 && prev != u32::MAX {
+                assert!(p < prev, "ranks above the floor must strictly decrease");
+            }
+            prev = p;
         }
+        assert_eq!(rank_points(1), 1000);
+        assert_eq!(rank_points(0), 0);
     }
 
     #[test]
-    fn misses_cost_points() {
-        assert_eq!(score_find(true, 1.0, 1), MAX_SCORE - MISS_PENALTY);
-        assert!(score_find(true, 0.5, 3) < score_find(true, 0.5, 0));
-        assert_eq!(score_find(true, 0.1, 100), 0);
+    fn perfect_round() {
+        assert_eq!(score_round(1, 0, true, true, true, false), MAX_SCORE);
     }
 
     #[test]
-    fn not_found_scores_zero() {
-        assert_eq!(score_find(false, 1.0, 0), 0);
-        assert_eq!(score_find(false, 0.5, 2), 0);
+    fn misses_and_odlaw_cost() {
+        assert_eq!(score_round(1, 2, false, false, false, false), 1000 - 50);
+        assert_eq!(score_round(1, 0, false, false, false, true), 1000 - 150);
+        assert!(score_round(2, 0, false, false, false, false) < score_round(1, 0, false, false, false, false));
     }
 
     #[test]
-    fn degenerate_inputs() {
-        assert_eq!(score_find(true, f32::NAN, 0), 0);
-        assert_eq!(score_find(true, 2.0, 0), MAX_SCORE); // clamped
+    fn not_found_can_still_bonus() {
+        assert_eq!(score_round(0, 0, true, false, false, false), BONUS_WENDA);
+    }
+
+    #[test]
+    fn never_negative() {
+        assert_eq!(score_round(0, 50, false, false, false, true), 0);
     }
 }

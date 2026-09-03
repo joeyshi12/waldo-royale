@@ -112,6 +112,24 @@ pub fn warp(mesh: &mut MeshData, rng: &mut Rng, amp: f32) {
     }
 }
 
+/// Make triangle winding agree with the authored outward normals, so
+/// renderers that flip normals on back faces (double-sided materials)
+/// light the surface correctly.
+fn fix_winding(mesh: &mut MeshData) {
+    let positions = mesh.positions.clone();
+    let normals = mesh.normals.clone();
+    let pos = |i: usize| v3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+    let nrm = |i: usize| v3(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
+    for tri in mesh.indices.chunks_exact_mut(3) {
+        let (a, b, c) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let face = pos(b).sub(pos(a)).cross(pos(c).sub(pos(a)));
+        let outward = nrm(a).add(nrm(b)).add(nrm(c));
+        if face.dot(outward) < 0.0 {
+            tri.swap(1, 2);
+        }
+    }
+}
+
 fn bounding_radius(mesh: &MeshData) -> f32 {
     (0..mesh.vertex_count())
         .map(|i| mesh.position(i).length())
@@ -363,6 +381,7 @@ pub fn build_shape(rng: &mut Rng) -> Shape {
         name = format!("Wobbly {name}");
     }
 
+    fix_winding(&mut mesh);
     let bounding_radius = bounding_radius(&mesh);
     Shape { name, mesh, bounding_radius }
 }
@@ -382,6 +401,30 @@ mod tests {
         for i in 0..m.vertex_count() {
             let n = v3(m.normals[i * 3], m.normals[i * 3 + 1], m.normals[i * 3 + 2]);
             assert!((n.length() - 1.0).abs() < 1e-3, "non-unit normal {n:?}");
+        }
+    }
+
+    #[test]
+    fn winding_matches_normals() {
+        for seed in 0..40u64 {
+            let mut rng = Rng::new(seed);
+            let s = build_shape(&mut rng);
+            let m = &s.mesh;
+            let mut bad = 0;
+            for tri in m.indices.chunks_exact(3) {
+                let (a, b, c) =
+                    (m.position(tri[0] as usize), m.position(tri[1] as usize), m.position(tri[2] as usize));
+                let face = b.sub(a).cross(c.sub(a));
+                let n = |i: u32| {
+                    let i = i as usize;
+                    v3(m.normals[i * 3], m.normals[i * 3 + 1], m.normals[i * 3 + 2])
+                };
+                let outward = n(tri[0]).add(n(tri[1])).add(n(tri[2]));
+                if face.dot(outward) < 0.0 {
+                    bad += 1;
+                }
+            }
+            assert_eq!(bad, 0, "{}: {bad} backwards triangles", s.name);
         }
     }
 

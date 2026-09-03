@@ -9,5 +9,5 @@ pub mod scoring;
 pub mod shapes;
 pub mod worldgen;
 
-pub use scoring::{score_find, WALDO_HIT_RADIUS};
-pub use worldgen::{generate_world, World};
+pub use scoring::{bonus_points, rank_points, score_round, WALDO_HIT_RADIUS};
+pub use worldgen::{generate_world, generate_world_opts, mutator_opts, GenOptions, World};

@@ -14,9 +14,13 @@ Scenery models are from [Kenney](https://kenney.nl) (CC0).
 
 1. Host creates a lobby and shares the 4-letter code.
 2. Host picks the number of rounds (1-10) and time per round (10 s to 5 min).
-3. Spin the planet, zoom in, and click Waldo. Scoring is
-   `5000 x (time remaining / round time)` minus 150 per wrong click.
-4. Rounds end early once everyone finds him. Win screen at the end.
+3. Drag to spin the planet, scroll to zoom, click to guess. Finding Waldo
+   scores by finish order (1000/700/550/...), wrong clicks cost 25.
+4. Wenda, Woof's tail and Wizard Whitebeard hide on every planet as bonus
+   finds; Odlaw costs 150 if you mistake him for Waldo.
+5. Some rounds carry a mutator: night (cursor searchlight), lightning
+   (a third of the time), crowded, or tiny planet.
+6. Rounds end early once everyone finds Waldo. Win screen at the end.
 
 ## Build and run
 

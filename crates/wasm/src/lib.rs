@@ -9,9 +9,13 @@ pub struct WorldHandle {
     world: waldo_core::World,
 }
 
+/// `mutator` is "" or one of "night", "lightning", "crowded", "tiny" —
+/// the same string the server announces, so generation stays in lockstep.
 #[wasm_bindgen]
-pub fn generate_world(seed: u32) -> WorldHandle {
-    WorldHandle { world: waldo_core::generate_world(seed) }
+pub fn generate_world(seed: u32, mutator: &str) -> WorldHandle {
+    WorldHandle {
+        world: waldo_core::generate_world_opts(seed, waldo_core::mutator_opts(mutator)),
+    }
 }
 
 #[wasm_bindgen]

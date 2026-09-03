@@ -16,7 +16,6 @@ const net = new Net();
 let myId = null;
 let isHost = false;
 let players = [];
-let mode = 'rotate';
 let playing = false;
 let found = false;
 let lastPick = null;
@@ -94,7 +93,7 @@ net
     roundEndsAt = Math.min(m.ends_at_ms, Date.now() + roundMs);
 
     await R.assetsReady; // models load once, at startup; no-op afterwards
-    world = generate_world(m.seed);
+    world = generate_world(m.seed, m.mutator);
     currentMeta = JSON.parse(world.metaJson());
     R.buildWorld(world, currentMeta);
 
@@ -103,19 +102,42 @@ net
     $('#shapeName').textContent = `the ${currentMeta.shape_name} Planet`;
     $('#foundBanner').style.display = 'none';
     $('#foundCount').style.display = 'none';
-    setMode('rotate');
+    const labels = {
+      night: 'Night round · your cursor is a searchlight',
+      lightning: 'Lightning round · a third of the time',
+      crowded: 'Crowded round · extra everything',
+      tiny: 'Tiny planet · everyone is very close together',
+    };
+    if (labels[m.mutator]) toast(labels[m.mutator], 4000, 'info');
+    R.setMutator(m.mutator);
     showScreen(null);
     $('#gameHud').classList.add('show');
   })
   .on('click_result', (m) => {
-    if (m.hit) {
-      found = true;
-      $('#foundBanner').style.display = 'block';
-      $('#foundScore').textContent = `+${m.score} · waiting for the others…`;
-      R.markFound(currentMeta.waldo.pos);
-    } else {
-      toast(`Not him! −150 points (${m.misses} ${m.misses === 1 ? 'miss' : 'misses'})`);
-      if (lastPick) R.showMiss(lastPick);
+    const castPos = (role) => currentMeta.cast.find((c) => c.role === role)?.pos;
+    switch (m.target) {
+      case 'waldo':
+        found = true;
+        $('#foundBanner').style.display = 'block';
+        $('#foundScore').textContent =
+          `+${m.points} · bonus hunt: Wenda, Woof's tail, the Wizard`;
+        R.markFound(currentMeta.waldo.pos);
+        break;
+      case 'wenda':
+      case 'woof':
+      case 'wizard': {
+        const names = { wenda: 'Wenda', woof: "Woof's tail", wizard: 'Wizard Whitebeard' };
+        toast(`${names[m.target]}! +${m.points}`, 1800, 'info');
+        R.showPing(castPos(m.target), 0xffe14a);
+        break;
+      }
+      case 'odlaw':
+        toast(`That's Odlaw! ${m.points} points`, 2600);
+        R.showPing(castPos('odlaw'), 0xe8a020);
+        break;
+      default:
+        toast(`Not him! ${m.points} points (${m.misses} ${m.misses === 1 ? 'miss' : 'misses'})`);
+        if (lastPick) R.showMiss(lastPick);
     }
   })
   .on('player_found', (m) => {
@@ -132,8 +154,9 @@ net
     $('#resRows').innerHTML = m.results.map((r) => `
       <tr>
         <td><span class="swatch" style="background:${colorForId(r.id)}"></span>${escapeHtml(r.name)}</td>
-        <td>${r.found ? (r.time_ms / 1000).toFixed(1) + ' s' : 'not found'}${
+        <td>${r.found ? `#${r.rank} · ${(r.time_ms / 1000).toFixed(1)} s` : 'not found'}${
           r.misses ? ` <span style="opacity:.6">· ${r.misses}✗</span>` : ''}</td>
+        <td style="text-align:right">${r.bonus > 0 ? '+' : ''}${r.bonus || ''}</td>
         <td class="score">${r.score}</td>
         <td>${r.total}</td>
       </tr>`).join('');
@@ -165,26 +188,8 @@ net
     connected = false;
   });
 
-// ---------- game input (rotate / point / zoom) ----------
-function setMode(m) {
-  mode = m;
-  $('#btnRotate').classList.toggle('active', m === 'rotate');
-  $('#btnPoint').classList.toggle('active', m === 'point');
-  canvas.className = m;
-}
-$('#btnRotate').onclick = () => setMode('rotate');
-$('#btnPoint').onclick = () => setMode('point');
-
-// keyboard shortcuts: 1 = rotate, 2 = point
-addEventListener('keydown', (e) => {
-  if (!playing) return;
-  const tag = e.target.tagName;
-  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-  if (e.key === '1') setMode('rotate');
-  else if (e.key === '2') setMode('point');
-});
-
-let dragging = false, px = 0, py = 0;
+// ---------- game input: drag spins, click guesses, wheel zooms to cursor ----------
+let dragging = false, dragDist = 0, px = 0, py = 0;
 const pointers = new Map();
 let pinchDist = 0, lastPinch = -1000;
 const pinchGap = () => {
@@ -199,14 +204,17 @@ canvas.addEventListener('pointerdown', (e) => {
     dragging = false;
     canvas.classList.remove('dragging');
     pinchDist = pinchGap();
-  } else if (mode === 'rotate' && playing) {
-    dragging = true; px = e.clientX; py = e.clientY;
-    canvas.classList.add('dragging');
+  } else if (playing) {
+    dragging = true;
+    dragDist = 0;
+    px = e.clientX; py = e.clientY;
   }
 });
+
 canvas.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId);
   if (p) { p.x = e.clientX; p.y = e.clientY; }
+  R.updateSearchlight(e.clientX, e.clientY);
   if (pointers.size === 2) {
     const d = pinchGap();
     if (pinchDist > 0) R.setZoom(R.zoom * d / pinchDist);
@@ -215,9 +223,15 @@ canvas.addEventListener('pointermove', (e) => {
     return;
   }
   if (!dragging) return;
-  R.rotatePlanet(e.clientX - px, e.clientY - py);
+  const dx = e.clientX - px, dy = e.clientY - py;
+  dragDist += Math.abs(dx) + Math.abs(dy);
+  if (dragDist > 4) {
+    canvas.classList.add('dragging');
+    R.rotatePlanet(dx, dy);
+  }
   px = e.clientX; py = e.clientY;
 });
+
 const endDrag = (e) => {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
@@ -228,13 +242,14 @@ addEventListener('pointercancel', endDrag);
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  R.setZoom(R.zoom * Math.exp(-e.deltaY * 0.0012));
+  R.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0012));
 }, { passive: false });
 $('#zoomIn').onclick = () => R.setZoom(R.zoom * 1.3);
 $('#zoomOut').onclick = () => R.setZoom(R.zoom / 1.3);
 
 canvas.addEventListener('click', (e) => {
-  if (mode !== 'point' || !playing || found) return;
+  if (!playing || found) return;
+  if (dragDist > 4) return; // that was a spin, not a guess
   if (performance.now() - lastPinch < 400) return;
   const pick = R.pickSurface(e.clientX, e.clientY);
   if (!pick) return;

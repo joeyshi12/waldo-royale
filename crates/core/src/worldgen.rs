@@ -13,6 +13,37 @@ pub struct Placement {
     pub scale: [f32; 3],
 }
 
+/// One supporting-cast character on the surface.
+#[derive(Serialize, Clone, Debug)]
+pub struct CastPlacement {
+    pub role: String,
+    pub pos: [f32; 3],
+    pub quat: [f32; 4],
+    pub scale: [f32; 3],
+}
+
+/// Knobs a round mutator can turn. Both client and server derive these from
+/// the mutator name, keeping generation deterministic.
+#[derive(Clone, Copy)]
+pub struct GenOptions {
+    pub density_mult: f32,
+    pub size_mult: f32,
+}
+
+impl Default for GenOptions {
+    fn default() -> Self {
+        GenOptions { density_mult: 1.0, size_mult: 1.0 }
+    }
+}
+
+pub fn mutator_opts(mutator: &str) -> GenOptions {
+    match mutator {
+        "crowded" => GenOptions { density_mult: 1.7, size_mult: 1.0 },
+        "tiny" => GenOptions { density_mult: 1.0, size_mult: 0.62 },
+        _ => GenOptions::default(),
+    }
+}
+
 /// A batch of same-kind scenery for instanced rendering.
 /// `transforms` is 10 floats per instance: pos(3) quat(4) scale(3).
 #[derive(Serialize)]
@@ -33,6 +64,7 @@ pub struct World {
     pub shape_name: String,
     pub bounding_radius: f32,
     pub waldo: Placement,
+    pub cast: Vec<CastPlacement>,
     pub sets: Vec<InstanceSet>,
     #[serde(skip)]
     pub mesh: MeshData,
@@ -181,10 +213,21 @@ fn kind_scale(kind: &str, rng: &mut Rng) -> [f32; 3] {
 const BASELINE_AREA: f32 = 1450.0;
 
 pub fn generate_world(seed: u32) -> World {
+    generate_world_opts(seed, GenOptions::default())
+}
+
+pub fn generate_world_opts(seed: u32, opts: GenOptions) -> World {
     let mut rng = Rng::new(seed as u64);
-    let shape = build_shape(&mut rng);
+    let mut shape = build_shape(&mut rng);
+    if (opts.size_mult - 1.0).abs() > 1e-6 {
+        for p in shape.mesh.positions.iter_mut() {
+            *p *= opts.size_mult;
+        }
+        shape.bounding_radius *= opts.size_mult;
+    }
     let sampler = SurfaceSampler::new(&shape.mesh);
-    let density = (sampler.total_area() / BASELINE_AREA).clamp(0.35, 1.6);
+    let density =
+        ((sampler.total_area() / BASELINE_AREA).clamp(0.35, 1.6) * opts.density_mult).min(2.6);
 
     let (wpos, wnorm) = sampler.sample(&mut rng);
     let waldo = Placement {
@@ -195,6 +238,34 @@ pub fn generate_world(seed: u32) -> World {
         },
         scale: [1.5, 1.5, 1.5],
     };
+
+    // supporting cast: spaced away from Waldo and each other
+    let roles: [(&str, f32); 4] =
+        [("wenda", 1.5), ("odlaw", 1.5), ("woof", 0.9), ("wizard", 1.6)];
+    let min_from_waldo = 3.0 * opts.size_mult;
+    let min_between = 2.5 * opts.size_mult;
+    let mut cast: Vec<CastPlacement> = Vec::with_capacity(roles.len());
+    for (role, scale) in roles {
+        let mut guard = 0;
+        loop {
+            guard += 1;
+            let (pos, normal) = sampler.sample(&mut rng);
+            let ok = pos.distance(wpos) >= min_from_waldo
+                && cast.iter().all(|c| {
+                    pos.distance(v3(c.pos[0], c.pos[1], c.pos[2])) >= min_between
+                });
+            if ok || guard > 100 {
+                let q = surface_quat(&mut rng, normal);
+                cast.push(CastPlacement {
+                    role: role.to_string(),
+                    pos: [pos.x, pos.y, pos.z],
+                    quat: [q.x, q.y, q.z, q.w],
+                    scale: [scale, scale, scale],
+                });
+                break;
+            }
+        }
+    }
 
     let mut sets = Vec::with_capacity(KINDS.len());
     for spec in KINDS.iter() {
@@ -209,6 +280,9 @@ pub fn generate_world(seed: u32) -> World {
             guard += 1;
             let (pos, normal) = sampler.sample(&mut rng);
             if pos.distance(wpos) < spec.clearance {
+                continue;
+            }
+            if cast.iter().any(|c| pos.distance(v3(c.pos[0], c.pos[1], c.pos[2])) < 0.6) {
                 continue;
             }
             let q = surface_quat(&mut rng, normal);
@@ -232,6 +306,7 @@ pub fn generate_world(seed: u32) -> World {
         shape_name: shape.name,
         bounding_radius: shape.bounding_radius,
         waldo,
+        cast,
         sets,
         mesh: shape.mesh,
     }
@@ -271,6 +346,30 @@ mod tests {
             assert!(d <= w.bounding_radius + 1e-3, "waldo outside bounds");
             assert!(d > 1.0, "waldo at origin?");
         }
+    }
+
+    #[test]
+    fn cast_is_placed_and_spaced() {
+        for seed in 0..10 {
+            let w = generate_world(seed);
+            assert_eq!(w.cast.len(), 4);
+            let roles: Vec<&str> = w.cast.iter().map(|c| c.role.as_str()).collect();
+            assert_eq!(roles, ["wenda", "odlaw", "woof", "wizard"]);
+            for c in &w.cast {
+                let p = v3(c.pos[0], c.pos[1], c.pos[2]);
+                assert!(p.length() <= w.bounding_radius + 1e-3);
+            }
+        }
+    }
+
+    #[test]
+    fn mutators_change_generation() {
+        let base = generate_world(42);
+        let tiny = generate_world_opts(42, mutator_opts("tiny"));
+        assert!(tiny.bounding_radius < base.bounding_radius * 0.7);
+        let crowded = generate_world_opts(42, mutator_opts("crowded"));
+        let count = |w: &World| w.sets.iter().map(|s| s.count).sum::<u32>();
+        assert!(count(&crowded) > count(&base));
     }
 
     #[test]

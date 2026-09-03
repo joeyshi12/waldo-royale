@@ -25,10 +25,11 @@ use axum::{
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use waldo_core::{
+    bonus_points,
     math::v3,
+    mutator_opts,
     protocol::{ClientMsg, Config, PlayerInfo, RoundEntry, ServerMsg, Standing},
-    rng::Rng,
-    score_find, WALDO_HIT_RADIUS,
+    rank_points, rng::Rng, score_round, WALDO_HIT_RADIUS,
 };
 
 const DEFAULT_PORT: u16 = 8017;
@@ -56,13 +57,22 @@ struct Player {
     id: u32,
     name: String,
     tx: UnboundedSender<String>,
-    found: bool,
+    /// Finish order for Waldo this round (1-based), 0 = not yet.
+    found_rank: u32,
     /// ms into the round when Waldo was clicked.
     found_at_ms: i64,
-    /// fraction of round time remaining at the find (drives the score).
-    found_frac: f32,
     misses: u32,
+    wenda: bool,
+    woof: bool,
+    wizard: bool,
+    odlaw: bool,
     total: u32,
+}
+
+impl Player {
+    fn round_score(&self) -> u32 {
+        score_round(self.found_rank, self.misses, self.wenda, self.woof, self.wizard, self.odlaw)
+    }
 }
 
 struct Lobby {
@@ -75,6 +85,12 @@ struct Lobby {
     round_ends_ms: u64,
     /// Waldo's position for the current round, cached at round start.
     waldo: [f32; 3],
+    /// Supporting cast positions for the current round: (role, pos).
+    cast: Vec<(String, [f32; 3])>,
+    /// Current round's mutator ("" = none).
+    mutator: String,
+    /// Actual round length in ms (mutators may shorten it).
+    round_len_ms: u64,
     /// Bumped whenever a scheduled timer becomes stale.
     timer_gen: u64,
 }
@@ -136,14 +152,36 @@ fn start_round(state: &Shared, lobby: &mut Lobby) {
         let mut r = Rng::new(t as u64 ^ (now_ms() << 16) ^ lobby.round as u64);
         r.next_u32()
     };
-    let secs = lobby.config.round_secs;
-    lobby.round_ends_ms = now_ms() + secs as u64 * 1000;
-    lobby.waldo = waldo_core::generate_world(lobby.seed).waldo.pos;
+    lobby.mutator = {
+        let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
+        let mut r = Rng::new(t as u64 ^ lobby.seed as u64);
+        match r.below(9) {
+            0 => "night",
+            1 => "lightning",
+            2 => "crowded",
+            3 => "tiny",
+            _ => "",
+        }
+        .to_string()
+    };
+    let secs = if lobby.mutator == "lightning" {
+        (lobby.config.round_secs / 3).clamp(15, 45)
+    } else {
+        lobby.config.round_secs
+    };
+    lobby.round_len_ms = secs as u64 * 1000;
+    lobby.round_ends_ms = now_ms() + lobby.round_len_ms;
+    let world = waldo_core::generate_world_opts(lobby.seed, mutator_opts(&lobby.mutator));
+    lobby.waldo = world.waldo.pos;
+    lobby.cast = world.cast.iter().map(|c| (c.role.clone(), c.pos)).collect();
     for p in &mut lobby.players {
-        p.found = false;
+        p.found_rank = 0;
         p.found_at_ms = -1;
-        p.found_frac = 0.0;
         p.misses = 0;
+        p.wenda = false;
+        p.woof = false;
+        p.wizard = false;
+        p.odlaw = false;
     }
     lobby.timer_gen += 1;
     broadcast(
@@ -153,6 +191,7 @@ fn start_round(state: &Shared, lobby: &mut Lobby) {
             total_rounds: lobby.config.rounds,
             seed: lobby.seed,
             round_secs: secs,
+            mutator: lobby.mutator.clone(),
             ends_at_ms: lobby.round_ends_ms,
         },
     );
@@ -180,14 +219,16 @@ fn finish_round(state: &Shared, lobby: &mut Lobby) {
         .players
         .iter_mut()
         .map(|p| {
-            let score = score_find(p.found, p.found_frac, p.misses);
+            let score = p.round_score();
             p.total += score;
             RoundEntry {
                 id: p.id,
                 name: p.name.clone(),
-                found: p.found,
+                found: p.found_rank > 0,
+                rank: p.found_rank,
                 time_ms: p.found_at_ms,
                 misses: p.misses,
+                bonus: bonus_points(p.wenda, p.woof, p.wizard, p.odlaw),
                 score,
                 total: p.total,
             }
@@ -282,10 +323,13 @@ fn handle_msg(
                     id,
                     name: sanitize_name(&name),
                     tx: tx.clone(),
-                    found: false,
+                    found_rank: 0,
                     found_at_ms: -1,
-                    found_frac: 0.0,
                     misses: 0,
+                    wenda: false,
+                    woof: false,
+                    wizard: false,
+                    odlaw: false,
                     total: 0,
                 }],
                 config: Config::default(),
@@ -294,6 +338,9 @@ fn handle_msg(
                 seed: 0,
                 round_ends_ms: 0,
                 waldo: [0.0; 3],
+                cast: Vec::new(),
+                mutator: String::new(),
+                round_len_ms: 0,
                 timer_gen: 0,
             };
             broadcast_lobby(&lobby);
@@ -320,10 +367,13 @@ fn handle_msg(
                 id,
                 name: sanitize_name(&name),
                 tx: tx.clone(),
-                found: false,
+                found_rank: 0,
                 found_at_ms: -1,
-                found_frac: 0.0,
                 misses: 0,
+                wenda: false,
+                woof: false,
+                wizard: false,
+                odlaw: false,
                 total: 0,
             });
             broadcast_lobby(lobby);
@@ -369,33 +419,81 @@ fn handle_msg(
                 return;
             }
             let ends = lobby.round_ends_ms;
-            let total_ms = lobby.config.round_secs as f32 * 1000.0;
+            let round_len_ms = lobby.round_len_ms;
+            let total_ms = ends.saturating_sub(now_ms());
+            let click = v3(pos[0], pos[1], pos[2]);
             let waldo = v3(lobby.waldo[0], lobby.waldo[1], lobby.waldo[2]);
+
+            // resolve the click target: Waldo first, then the nearest cast
+            // member in range, otherwise a miss
+            let cast_hit: Option<String> = lobby
+                .cast
+                .iter()
+                .map(|(role, p)| (role.clone(), click.distance(v3(p[0], p[1], p[2]))))
+                .filter(|(_, d)| *d <= WALDO_HIT_RADIUS)
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .map(|(role, _)| role);
+            let found_before = lobby.players.iter().filter(|p| p.found_rank > 0).count() as u32;
+            let total_players = lobby.players.len() as u32;
+
             let Some(p) = lobby.players.iter_mut().find(|p| p.id == *id) else { return };
-            if p.found {
-                return;
-            }
-            let hit = v3(pos[0], pos[1], pos[2]).distance(waldo) <= WALDO_HIT_RADIUS;
-            if hit {
-                p.found = true;
-                let remaining = ends.saturating_sub(now_ms()) as f32;
-                p.found_frac = (remaining / total_ms).clamp(0.0, 1.0);
-                p.found_at_ms = (total_ms - remaining) as i64;
-                let score = score_find(true, p.found_frac, p.misses);
-                let misses = p.misses;
-                send_to(p, &ServerMsg::ClickResult { hit: true, score, misses });
-                let found = lobby.players.iter().filter(|p| p.found).count() as u32;
-                let total = lobby.players.len() as u32;
-                broadcast(lobby, &ServerMsg::PlayerFound { id: *id, found, total });
-                if found == total {
-                    finish_round(state, lobby);
+            let hit_waldo = click.distance(waldo) <= WALDO_HIT_RADIUS;
+
+            let target: &str;
+            let points: i32;
+            if hit_waldo && p.found_rank == 0 {
+                p.found_rank = found_before + 1;
+                p.found_at_ms = (round_len_ms as i64).saturating_sub(total_ms as i64).max(0);
+                target = "waldo";
+                points = rank_points(p.found_rank) as i32;
+            } else if hit_waldo {
+                return; // already found him; ignore repeat clicks on Waldo
+            } else if let Some(role) = cast_hit {
+                let (already, flag): (bool, &mut bool) = match role.as_str() {
+                    "wenda" => (p.wenda, &mut p.wenda),
+                    "woof" => (p.woof, &mut p.woof),
+                    "wizard" => (p.wizard, &mut p.wizard),
+                    _ => (p.odlaw, &mut p.odlaw),
+                };
+                if already {
+                    return; // each character interacts once per round
                 }
+                *flag = true;
+                target = match role.as_str() {
+                    "wenda" => "wenda",
+                    "woof" => "woof",
+                    "wizard" => "wizard",
+                    _ => "odlaw",
+                };
+                points = match target {
+                    "wenda" => waldo_core::scoring::BONUS_WENDA as i32,
+                    "woof" => waldo_core::scoring::BONUS_WOOF as i32,
+                    "wizard" => waldo_core::scoring::BONUS_WIZARD as i32,
+                    _ => -(waldo_core::scoring::ODLAW_PENALTY as i32),
+                };
             } else {
                 p.misses += 1;
-                let misses = p.misses;
-                send_to(p, &ServerMsg::ClickResult { hit: false, score: 0, misses });
+                target = "miss";
+                points = -(waldo_core::scoring::MISS_PENALTY as i32);
+            }
+
+            let msg = ServerMsg::ClickResult {
+                target: target.to_string(),
+                points,
+                round_score: p.round_score(),
+                misses: p.misses,
+            };
+            send_to(p, &msg);
+
+            if target == "waldo" {
+                let found = found_before + 1;
+                broadcast(lobby, &ServerMsg::PlayerFound { id: *id, found, total: total_players });
+                if found == total_players {
+                    finish_round(state, lobby);
+                }
             }
         }
+
     }
 }
 
@@ -409,7 +507,7 @@ fn leave(state: &Shared, code: &str, id: u32) {
     }
     broadcast_lobby(lobby);
     if lobby.phase == Phase::Playing
-        && lobby.players.iter().all(|p| p.found)
+        && lobby.players.iter().all(|p| p.found_rank > 0)
     {
         finish_round(state, lobby);
     }

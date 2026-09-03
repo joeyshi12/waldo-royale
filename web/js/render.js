@@ -46,12 +46,12 @@ function planetTexture(seed) {
   return t;
 }
 
-function stripeTexture() {
+function stripeTexture(colorA = '#e02020', colorB = '#ffffff') {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const ctx = c.getContext('2d');
   for (let i = 0; i < 8; i++) {
-    ctx.fillStyle = i % 2 ? '#ffffff' : '#e02020';
+    ctx.fillStyle = i % 2 ? colorB : colorA;
     ctx.fillRect(0, i * 8, 64, 8);
   }
   const t = new THREE.CanvasTexture(c);
@@ -216,6 +216,79 @@ function buildWaldo(stripes) {
   return grp;
 }
 
+// supporting cast: Wenda and Odlaw echo Waldo's silhouette (that is the
+// trick), the Wizard is unmistakable, and Woof is just a tail.
+function buildCast(role, stripes, stripesOdlaw) {
+  const grp = new THREE.Group();
+  const lam = (o) => new THREE.MeshLambertMaterial(o);
+  const skin = lam({ color: 0xf2c896 }), dark = lam({ color: 0x2a2a2e });
+  const add = (geo, mat, x, y, z, rot) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    if (rot) m.rotation.set(rot[0], rot[1], rot[2]);
+    grp.add(m);
+    return m;
+  };
+
+  if (role === 'woof') {
+    // a striped tail poking out of the ground, white tuft on top
+    add(new THREE.CylinderGeometry(0.02, 0.028, 0.2, 8), lam({ map: stripes }), 0, 0.1, 0, [0, 0, 0.15]);
+    add(new THREE.SphereGeometry(0.035, 8, 8), lam({ color: 0xffffff }), 0.03, 0.215, 0);
+    return grp;
+  }
+
+  if (role === 'wizard') {
+    add(new THREE.CylinderGeometry(0.07, 0.16, 0.45, 10), lam({ color: 0xc0392b }), 0, 0.225, 0); // robe
+    add(new THREE.SphereGeometry(0.08, 12, 10), skin, 0, 0.5, 0);
+    add(new THREE.CylinderGeometry(0.02, 0.09, 0.24, 8), lam({ color: 0xf5f5f5 }), 0, 0.4, 0.06, [0.25, 0, 0]); // beard
+    add(new THREE.ConeGeometry(0.09, 0.18, 10), lam({ color: 0xc0392b }), 0, 0.63, 0); // hat
+    add(new THREE.CylinderGeometry(0.012, 0.012, 0.55, 6), lam({ color: 0x8a5a2b }), 0.16, 0.28, 0, [0, 0, -0.08]); // staff
+    return grp;
+  }
+
+  const striped = lam({ map: role === 'odlaw' ? stripesOdlaw : stripes });
+  const isWenda = role === 'wenda';
+
+  // legs / skirt
+  if (isWenda) {
+    add(new THREE.ConeGeometry(0.12, 0.16, 10), lam({ color: 0x3558c4 }), 0, 0.2, 0); // skirt
+    add(new THREE.CylinderGeometry(0.024, 0.026, 0.14, 8), striped, 0.04, 0.07, 0); // striped tights
+    add(new THREE.CylinderGeometry(0.024, 0.026, 0.14, 8), striped, -0.04, 0.07, 0);
+  } else {
+    add(new THREE.BoxGeometry(0.055, 0.03, 0.09), dark, 0.042, 0.015, 0.012);
+    add(new THREE.BoxGeometry(0.055, 0.03, 0.09), dark, -0.042, 0.015, 0.012);
+    add(new THREE.CylinderGeometry(0.026, 0.03, 0.17, 8), dark, 0.042, 0.115, 0); // black trousers
+    add(new THREE.CylinderGeometry(0.026, 0.03, 0.17, 8), dark, -0.042, 0.115, 0);
+  }
+
+  // torso + arms
+  add(new THREE.CylinderGeometry(0.082, 0.098, 0.22, 12), striped, 0, 0.31, 0);
+  add(new THREE.CylinderGeometry(0.026, 0.03, 0.19, 8), striped, 0.115, 0.32, 0, [0, 0, 0.42]);
+  add(new THREE.CylinderGeometry(0.026, 0.03, 0.19, 8), striped, -0.115, 0.32, 0, [0, 0, -0.42]);
+
+  // head, hair, glasses
+  add(new THREE.SphereGeometry(0.085, 14, 12), skin, 0, 0.5, 0);
+  const hairColor = isWenda ? 0x4a3220 : 0x1c1c1c;
+  const hairGeo = isWenda
+    ? new THREE.SphereGeometry(0.09, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.62)
+    : new THREE.SphereGeometry(0.088, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42);
+  add(hairGeo, lam({ color: hairColor }), 0, 0.512, -0.008);
+  const lens = new THREE.TorusGeometry(0.026, 0.007, 6, 14);
+  add(lens, dark, 0.037, 0.505, 0.078);
+  add(lens, dark, -0.037, 0.505, 0.078);
+  if (role === 'odlaw') {
+    add(new THREE.BoxGeometry(0.07, 0.014, 0.02), dark, 0, 0.462, 0.078); // moustache
+  }
+
+  // hat
+  const pomColor = role === 'odlaw' ? 0xe8c020 : 0xe02020;
+  add(new THREE.CylinderGeometry(0.088, 0.09, 0.035, 12),
+    lam({ color: role === 'odlaw' ? 0x26262a : 0xffffff }), 0, 0.573, 0);
+  add(new THREE.CylinderGeometry(0.065, 0.086, 0.07, 12), striped, 0, 0.62, 0);
+  add(new THREE.SphereGeometry(0.028, 8, 8), lam({ color: pomColor }), 0, 0.665, 0);
+  return grp;
+}
+
 // renderer
 export class GameRenderer {
   constructor(canvas) {
@@ -232,12 +305,12 @@ export class GameRenderer {
     this.baseDist = 40;
     this.fitRadius = 17;
 
-    this.scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x3d2f1f, 0.9));
-    const sun = new THREE.DirectionalLight(0xfff2d9, 1.6);
-    sun.position.set(18, 25, 20);
-    const fill = new THREE.DirectionalLight(0x8899ff, 0.35);
-    fill.position.set(-15, -10, -10);
-    this.scene.add(sun, fill);
+    this.hemi = new THREE.HemisphereLight(0xbfd9ff, 0x3d2f1f, 0.9);
+    this.sun = new THREE.DirectionalLight(0xfff2d9, 1.6);
+    this.sun.position.set(18, 25, 20);
+    this.fill = new THREE.DirectionalLight(0x8899ff, 0.35);
+    this.fill.position.set(-15, -10, -10);
+    this.scene.add(this.hemi, this.sun, this.fill);
 
     {
       const g = new THREE.BufferGeometry();
@@ -254,6 +327,18 @@ export class GameRenderer {
     this.scene.add(this.planet);
 
     this.stripes = stripeTexture();
+    this.stripesOdlaw = stripeTexture('#e8c020', '#26262a');
+    this.castObjs = [];
+
+    // night-mutator searchlight (enabled per round)
+    this.nightOn = false;
+    this.cursor = { x: innerWidth / 2, y: innerHeight / 2 };
+    this.searchlight = new THREE.SpotLight(0xfff2d0, 0, 300, 0.15, 0.5, 1.2);
+    this.searchlight.position.copy(this.camera.position);
+    this.searchTarget = new THREE.Object3D();
+    this.scene.add(this.searchlight, this.searchTarget);
+    this.searchlight.target = this.searchTarget;
+    this.baseLights = null;
     this.kinds = kindParts(this.stripes);
     this.models = null;
     this.assetsReady = loadModels()
@@ -312,6 +397,7 @@ export class GameRenderer {
     this.zoom = THREE.MathUtils.clamp(z, 1, 5);
     this.camera.position.copy(this.camDir).multiplyScalar(this.baseDist / this.zoom);
     this.camera.lookAt(0, 0, 0);
+    this.applySearchlight();
   }
   fitCamera() {
     this.camera.aspect = innerWidth / innerHeight;
@@ -322,11 +408,75 @@ export class GameRenderer {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Zoom keeping the surface point under the cursor drifting to center. */
+  zoomAt(clientX, clientY, factor) {
+    const before = this.zoom;
+    this.setZoom(this.zoom * factor);
+    if (factor <= 1 || this.zoom === before) return;
+    this.pointerV.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointerV, this.camera);
+    const hit = this.raycaster.intersectObject(this.ground, false)[0];
+    if (!hit) return;
+    const dir = hit.point.clone().normalize();
+    const t = Math.min(0.35, 1 - before / this.zoom);
+    const q = new THREE.Quaternion().setFromUnitVectors(dir, this.camDir).slerp(
+      new THREE.Quaternion(), 1 - t);
+    this.planet.quaternion.premultiply(q);
+    this.applySearchlight();
+  }
+
+  /** Enable or reset a round mutator's visual effects. */
+  setMutator(mutator) {
+    this.nightOn = mutator === 'night';
+    this.hemi.intensity = this.nightOn ? 0.05 : 0.9;
+    this.sun.intensity = this.nightOn ? 0.04 : 1.6;
+    this.fill.intensity = this.nightOn ? 0 : 0.35;
+    this.cursor = { x: innerWidth / 2, y: innerHeight / 2 };
+    this.applySearchlight();
+  }
+
+  /** Point the night searchlight at the cursor. */
+  updateSearchlight(clientX, clientY) {
+    this.cursor = { x: clientX, y: clientY };
+    this.applySearchlight();
+  }
+
+  /** Re-aim the searchlight after any camera or planet change. Intensity is
+   * scaled by distance^decay so perceived brightness stays constant while
+   * zooming (physical lights fall off with distance). */
+  applySearchlight() {
+    if (!this.nightOn) {
+      this.searchlight.intensity = 0;
+      return;
+    }
+    this.searchlight.position.copy(this.camera.position);
+    this.pointerV.set(
+      (this.cursor.x / innerWidth) * 2 - 1, -(this.cursor.y / innerHeight) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointerV, this.camera);
+    const hit = this.raycaster.intersectObject(this.ground, false)[0];
+    const target = hit ? hit.point : this.raycaster.ray.at(40, new THREE.Vector3());
+    this.searchTarget.position.copy(target);
+    const dist = this.camera.position.distanceTo(target);
+    this.searchlight.intensity = 2.2 * Math.pow(dist, 1.2);
+  }
+
+  /** Brief colored ring ping at a planet-local position (bonus finds, Odlaw). */
+  showPing(posArray, colorHex) {
+    const pos = new THREE.Vector3(...posArray);
+    this.missRing.material.color.set(colorHex);
+    this.missRing.position.copy(pos).addScaledVector(pos.clone().normalize(), 0.1);
+    this.missRing.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1), pos.clone().normalize());
+    this.missRing.visible = true;
+    this.missTime = performance.now();
+  }
+
   rotatePlanet(dx, dy) {
     const speed = 0.006 / Math.sqrt(this.zoom);
     const q = new THREE.Quaternion();
     this.planet.quaternion.premultiply(q.setFromAxisAngle(UP, dx * speed));
     this.planet.quaternion.premultiply(q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * speed));
+    this.applySearchlight();
   }
 
   // ----- world lifecycle -----
@@ -336,6 +486,8 @@ export class GameRenderer {
       d.geometry?.dispose();
     }
     this.disposables = [];
+    for (const c of this.castObjs) this.planet.remove(c.group);
+    this.castObjs = [];
     this.outline.visible = false;
     this.foundRing.visible = false;
     this.missRing.visible = false;
@@ -419,13 +571,28 @@ export class GameRenderer {
     this.waldo.scale.set(...w.scale);
     this.waldo.visible = true;
 
+    // supporting cast, findable like Waldo
+    for (const c of meta.cast ?? []) {
+      const group = buildCast(c.role, this.stripes, this.stripesOdlaw);
+      group.position.set(...c.pos);
+      group.quaternion.set(...c.quat);
+      group.scale.set(...c.scale);
+      this.planet.add(group);
+      this.castObjs.push({ role: c.role, group, pos: c.pos });
+    }
+
     this.fitRadius = meta.bounding_radius + 2.8;
     this.zoom = 1;
     this.fitCamera();
 
-    // random orientation so nobody starts staring at Waldo
-    this.planet.quaternion.setFromEuler(new THREE.Euler(
-      Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2));
+    // fair spawn: identical for every player (seeded), with Waldo starting
+    // on the far side of the planet
+    const rnd = mulberry32(meta.seed ^ 0x51ab);
+    const waldoDir = new THREE.Vector3(...w.pos).normalize();
+    const away = this.camDir.clone().negate();
+    this.planet.quaternion.setFromUnitVectors(waldoDir, away);
+    this.planet.quaternion.premultiply(
+      new THREE.Quaternion().setFromAxisAngle(away, rnd() * Math.PI * 2));
   }
 
   // ----- guessing -----
@@ -433,13 +600,19 @@ export class GameRenderer {
   pickSurface(clientX, clientY) {
     this.pointerV.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     this.raycaster.setFromCamera(this.pointerV, this.camera);
-    const hit = this.raycaster.intersectObjects([this.ground, this.waldo], true)[0];
+    const targets = [this.ground, this.waldo, ...this.castObjs.map((c) => c.group)];
+    const hit = this.raycaster.intersectObjects(targets, true)[0];
     if (!hit) return null;
-    // a click anywhere on Waldo's model counts as his location, even at
-    // glancing angles where the ray would land on the ground far behind him
+    // a click anywhere on a character's model counts as their location, even
+    // at glancing angles where the ray would land far behind them
     for (let o = hit.object; o; o = o.parent) {
       if (o === this.waldo) {
         const pos = this.waldo.position.clone();
+        return { pos, normal: pos.clone().normalize() };
+      }
+      const c = this.castObjs.find((c) => c.group === o);
+      if (c) {
+        const pos = new THREE.Vector3(...c.pos);
         return { pos, normal: pos.clone().normalize() };
       }
     }
@@ -459,6 +632,7 @@ export class GameRenderer {
 
   /** Brief red ring where a wrong click landed. */
   showMiss(pick) {
+    this.missRing.material.color.set(0xff4040);
     this.missRing.position.copy(pick.pos).addScaledVector(pick.normal, 0.05);
     this.missRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), pick.normal);
     this.missRing.visible = true;
