@@ -2,9 +2,9 @@
 // runs in Rust (WASM); a 32-bit seed is all that crosses the wire per round.
 
 import init, { generate_world } from '../pkg/waldo_wasm.js';
-import { GameRenderer } from './render.js';
-import { Net } from './net.js';
-import { $, showScreen, toast, fmtTime, PLAYER_COLORS } from './ui.js';
+import { GameRenderer } from './render.js?v=0.3.1';
+import { Net } from './net.js?v=0.3.1';
+import { $, showScreen, toast, fmtTime, PLAYER_COLORS } from './ui.js?v=0.3.1';
 
 await init();
 
