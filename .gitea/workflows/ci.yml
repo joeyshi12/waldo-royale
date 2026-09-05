@@ -19,8 +19,9 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Run test suite
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude waldo-client
 
-      - name: Check client JS syntax
+      - name: Check client compiles for wasm
         run: |
-          for f in web/js/*.js; do node --check "$f"; done
+          rustup target add wasm32-unknown-unknown
+          cargo check -p waldo-client --target wasm32-unknown-unknown

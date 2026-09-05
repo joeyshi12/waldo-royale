@@ -28,9 +28,11 @@ pub struct PlayerInfo {
     pub id: u32,
     pub name: String,
     pub is_host: bool,
+    /// False while the player is in their disconnect grace period.
+    pub connected: bool,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMsg {
     /// Create a lobby and become its host.
@@ -41,16 +43,18 @@ pub enum ClientMsg {
     Configure { rounds: u32, round_secs: u32 },
     /// Host only: start the game.
     Start,
+    /// Resume a session after a dropped connection or page refresh.
+    Rejoin { code: String, token: String },
     /// Claim Waldo is at this planet-local position; the server judges.
     Click { pos: [f32; 3] },
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMsg {
     Error { message: String },
     /// Sent on join and whenever lobby membership / settings change.
-    Lobby { code: String, you: u32, players: Vec<PlayerInfo>, config: Config },
+    Lobby { code: String, you: u32, token: String, players: Vec<PlayerInfo>, config: Config },
     RoundStart {
         round: u32,
         total_rounds: u32,
@@ -74,9 +78,25 @@ pub enum ServerMsg {
         next_in_ms: u64,
     },
     GameOver { leaderboard: Vec<Standing> },
+    /// Everything a rejoining client needs to rebuild a round in progress.
+    Restore {
+        round: u32,
+        total_rounds: u32,
+        seed: u32,
+        round_secs: u32,
+        mutator: String,
+        ends_at_ms: u64,
+        /// Your own progress this round.
+        found_rank: u32,
+        misses: u32,
+        wenda: bool,
+        woof: bool,
+        wizard: bool,
+        odlaw: bool,
+    },
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RoundEntry {
     pub id: u32,
     pub name: String,
@@ -92,7 +112,7 @@ pub struct RoundEntry {
     pub total: u32,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Standing {
     pub id: u32,
     pub name: String,

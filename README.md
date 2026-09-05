@@ -4,9 +4,10 @@ A multiplayer "Where's Waldo" game. Players join a lobby, get the same
 procedurally generated 3D planet, and race to click Waldo. Fastest finder
 wins the round; highest total wins the game.
 
-World generation and scoring live in a Rust crate compiled both to WASM for
-the browser and natively for the server, so every player sees the identical
-world from a shared seed and the server scores clicks authoritatively.
+The whole game is Rust, in three crates: `core` (worldgen, scoring,
+protocol) is shared by `client` (a wasm module: Leptos UI, three-d renderer)
+and `server` (the axum lobby). Every player derives the identical world from
+a shared seed and the server scores clicks authoritatively.
 
 Scenery models are from [Kenney](https://kenney.nl) (CC0).
 
@@ -27,9 +28,9 @@ Scenery models are from [Kenney](https://kenney.nl) (CC0).
 Requires stable Rust, the `wasm32-unknown-unknown` target, and `wasm-pack`.
 
 ```sh
-wasm-pack build crates/wasm --target web --release --out-dir ../../web/pkg
+wasm-pack build crates/client --target web --release --out-dir ../../web/pkg
 cargo run -p waldo-server --release   # serves web/ on :8017
-cargo test --workspace
+cargo test --workspace --exclude waldo-client
 ```
 
 Or with Docker:

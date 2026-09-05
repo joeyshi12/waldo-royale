@@ -1,3 +1,4 @@
+
 //! End-to-end test: boots the server binary and plays a full two-player
 //! game over WebSocket.
 
@@ -215,4 +216,64 @@ async fn start_server_on(port: u16) -> ServerGuard {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     panic!("server did not start");
+}
+
+#[tokio::test]
+async fn dropped_player_can_rejoin_mid_round() {
+    let _guard = start_server_on(8993).await;
+    let connect = || async {
+        let (ws, _) = connect_async("ws://127.0.0.1:8993/ws").await.expect("connect");
+        ws
+    };
+
+    let mut alice = connect().await;
+    send(&mut alice, json!({"type": "create", "name": "Alice"})).await;
+    let lobby = recv_type(&mut alice, "lobby").await;
+    let code = lobby["code"].as_str().unwrap().to_string();
+    let token = lobby["token"].as_str().unwrap().to_string();
+    assert!(!token.is_empty());
+
+    let mut bob = connect().await;
+    send(&mut bob, json!({"type": "join", "code": code, "name": "Bob"})).await;
+    recv_type(&mut bob, "lobby").await;
+    recv_type(&mut alice, "lobby").await;
+
+    send(&mut alice, json!({"type": "configure", "rounds": 1, "round_secs": 60})).await;
+    recv_type(&mut alice, "lobby").await;
+    send(&mut alice, json!({"type": "start"})).await;
+    let rs = recv_type(&mut alice, "round_start").await;
+    let seed = rs["seed"].as_u64().unwrap() as u32;
+    let round = rs["round"].as_u64().unwrap();
+    recv_type(&mut bob, "round_start").await;
+
+    // Alice's connection drops mid-round
+    drop(alice);
+    // Bob sees her flagged as disconnected
+    let lb = recv_type(&mut bob, "lobby").await;
+    let alice_info = lb["players"].as_array().unwrap().iter()
+        .find(|p| p["name"] == "Alice").unwrap();
+    assert_eq!(alice_info["connected"], false);
+
+    // Alice comes back with her token and gets the round restored
+    let mut alice2 = connect().await;
+    send(&mut alice2, json!({"type": "rejoin", "code": code, "token": token})).await;
+    let restored = recv_type(&mut alice2, "restore").await;
+    assert_eq!(restored["seed"].as_u64().unwrap() as u32, seed);
+    assert_eq!(restored["round"].as_u64().unwrap(), round);
+    assert_eq!(restored["found_rank"], 0);
+
+    // and can still play: click Waldo, get rank-1 points
+    let world = waldo_core::generate_world_opts(seed, waldo_core::mutator_opts(
+        restored["mutator"].as_str().unwrap()));
+    let w = world.waldo.pos;
+    send(&mut alice2, json!({"type": "click", "pos": [w[0], w[1], w[2]]})).await;
+    let cr = recv_type(&mut alice2, "click_result").await;
+    assert_eq!(cr["target"], "waldo");
+    assert_eq!(cr["points"], 1000);
+
+    // a bogus token is rejected
+    let mut mallory = connect().await;
+    send(&mut mallory, json!({"type": "rejoin", "code": code, "token": "nope"})).await;
+    let e = recv_type(&mut mallory, "error").await;
+    assert_eq!(e["message"], "session expired");
 }

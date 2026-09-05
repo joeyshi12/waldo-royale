@@ -8,7 +8,7 @@ RUN rustup target add wasm32-unknown-unknown \
 
 WORKDIR /app
 COPY . .
-RUN wasm-pack build crates/wasm --target web --release --out-dir ../../web/pkg
+RUN wasm-pack build crates/client --target web --release --out-dir ../../web/pkg
 RUN cargo build --release -p waldo-server
 
 # runtime

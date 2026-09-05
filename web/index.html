@@ -55,8 +55,8 @@
   #waitingMsg { text-align: center; opacity: 0.7; font-size: 13px; margin-top: 8px; }
 
   /* ---------- game ---------- */
-  #scene { position: fixed; inset: 0; display: block; touch-action: none; cursor: crosshair; }
-  #scene.dragging { cursor: grabbing; }
+  canvas { position: fixed; inset: 0; width: 100% !important; height: 100% !important;
+    touch-action: none; cursor: crosshair; z-index: 0; }
   #gameHud { display: none; }
   #gameHud.show { display: block; }
   .hud { position: fixed; z-index: 10; user-select: none; }
@@ -113,102 +113,23 @@
 </style>
 </head>
 <body>
-<canvas id="scene"></canvas>
-
-<!-- menu -->
-<div class="screen show" id="menu">
-  <div class="card">
-    <h1>Waldo <span class="red">Royale</span></h1>
-    <div class="sub">Same planet. Same Waldo. Fastest finder wins.</div>
-    <div class="field">
-      <label>Your name</label>
-      <input id="nameInput" maxlength="20" placeholder="Player" autocomplete="off">
-    </div>
-    <button class="btn" id="createBtn">Create lobby</button>
-    <div class="divider">or join a friend</div>
-    <div class="split">
-      <input id="codeInput" maxlength="4" placeholder="Code" style="text-transform:uppercase"
-             autocomplete="off">
-      <button class="btn secondary" id="joinBtn">Join</button>
-    </div>
-  </div>
-</div>
-
-<!-- lobby -->
-<div class="screen" id="lobby">
-  <div class="card">
-    <div class="sub" style="margin-bottom:0">Lobby code</div>
-    <div id="lobbyCode">----</div>
-    <div class="code-hint">share this code with your friends</div>
-    <ul id="playerList"></ul>
-    <div id="hostControls">
-      <div class="split">
-        <div class="field">
-          <label>Rounds</label>
-          <select id="roundsSel">
-            <option>1</option><option>2</option><option selected>3</option>
-            <option>5</option><option>7</option><option>10</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Time per round</label>
-          <select id="secsSel">
-            <option value="30">30 s</option><option value="60">1 min</option>
-            <option value="90" selected>1 min 30</option><option value="120">2 min</option>
-            <option value="180">3 min</option><option value="300">5 min</option>
-          </select>
-        </div>
-      </div>
-      <button class="btn" id="startBtn">Start game</button>
-    </div>
-    <div id="waitingMsg">waiting for the host to start…</div>
-  </div>
-</div>
-
-<!-- in-game HUD -->
-<div id="gameHud">
-  <div class="hud" id="roundInfo">Round <span id="roundNum">1</span>/<span id="roundTotal">3</span>
-    <small id="shapeName"></small></div>
-  <div class="hud" id="timerWrap">
-    <div id="timerText">1:30</div>
-    <div id="timerBar"><div id="timerFill"></div></div>
-  </div>
-  <div class="hud" id="zoomer">
-    <button id="zoomIn" aria-label="Zoom in">+</button>
-    <button id="zoomOut" aria-label="Zoom out">&minus;</button>
-  </div>
-  <div class="hud" id="foundCount" style="display:none"></div>
-  <div class="hud" id="foundBanner" style="display:none">Found him! <span id="foundScore"></span></div>
-</div>
-
-<!-- between-round results -->
-<div class="screen" id="results">
-  <div class="card">
-    <h1 style="font-size:22px">Round <span id="resRound">1</span> results</h1>
-    <table>
-      <thead><tr><th>Player</th><th>Found</th><th style="text-align:right">Bonus</th><th style="text-align:right">Score</th><th style="text-align:right">Total</th></tr></thead>
-      <tbody id="resRows"></tbody>
-    </table>
-    <div id="nextIn"></div>
-  </div>
-</div>
-
-<!-- win screen -->
-<div class="screen" id="final">
-  <div class="card" style="text-align:center">
-    <div id="trophy">&#127942;</div>
-    <h1 id="winnerName" class="gold"></h1>
-    <div class="sub" id="finalSub" style="margin-bottom:14px">wins the game!</div>
-    <ol id="podium"></ol>
-    <button class="btn" id="backBtn">Back to lobby</button>
-  </div>
-</div>
-
-<div id="toast"></div>
-
-<script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+<canvas></canvas>
+<script type="module">
+  // winit escapes its never-returning event loop on wasm by throwing a
+  // deliberate exception; keep it out of the console.
+  addEventListener('error', (e) => {
+    if (String(e.error?.message ?? e.message).includes('Using exceptions for control flow')) {
+      e.preventDefault();
+    }
+  });
+  addEventListener('unhandledrejection', (e) => {
+    if (String(e.reason?.message ?? e.reason).includes('Using exceptions for control flow')) {
+      e.preventDefault();
+    }
+  });
+  // The entire client is one Rust wasm module: Leptos UI + three-d renderer.
+  import init from './pkg/waldo_client.js';
+  await init();
 </script>
-<script type="module" src="./js/main.js?v=0.3.1"></script>
 </body>
 </html>

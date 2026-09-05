@@ -57,6 +57,11 @@ struct Player {
     id: u32,
     name: String,
     tx: UnboundedSender<String>,
+    /// Private session token for reconnecting.
+    token: String,
+    connected: bool,
+    /// Bumped on reconnect to invalidate pending cleanup timers.
+    disconnect_gen: u64,
     /// Finish order for Waldo this round (1-based), 0 = not yet.
     found_rank: u32,
     /// ms into the round when Waldo was clicked.
@@ -113,25 +118,41 @@ fn broadcast(lobby: &Lobby, msg: &ServerMsg) {
     }
 }
 
-fn lobby_snapshot(lobby: &Lobby, you: u32) -> ServerMsg {
+fn lobby_snapshot(lobby: &Lobby, you: u32, token: &str) -> ServerMsg {
     ServerMsg::Lobby {
         code: lobby.code.clone(),
         you,
+        token: token.to_string(),
         players: lobby
             .players
             .iter()
             .enumerate()
-            .map(|(i, p)| PlayerInfo { id: p.id, name: p.name.clone(), is_host: i == 0 })
+            .map(|(i, p)| PlayerInfo {
+                id: p.id,
+                name: p.name.clone(),
+                is_host: i == 0,
+                connected: p.connected,
+            })
             .collect(),
         config: lobby.config,
     }
 }
 
-/// Send each player a Lobby message with their own `you` id.
+/// Send each player a Lobby message with their own id and session token.
 fn broadcast_lobby(lobby: &Lobby) {
     for p in &lobby.players {
-        send_to(p, &lobby_snapshot(lobby, p.id));
+        send_to(p, &lobby_snapshot(lobby, p.id, &p.token));
     }
+}
+
+fn gen_token() -> String {
+    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let mut r = Rng::new(t.as_nanos() as u64 ^ (t.subsec_nanos() as u64) << 17);
+    format!("{:08x}{:08x}{:08x}", r.next_u32(), r.next_u32(), r.next_u32())
+}
+
+fn grace_ms() -> u64 {
+    std::env::var("WALDO_GRACE_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(60_000)
 }
 
 fn leaderboard(lobby: &Lobby) -> Vec<Standing> {
@@ -152,7 +173,7 @@ fn start_round(state: &Shared, lobby: &mut Lobby) {
         let mut r = Rng::new(t as u64 ^ (now_ms() << 16) ^ lobby.round as u64);
         r.next_u32()
     };
-    lobby.mutator = {
+    lobby.mutator = std::env::var("WALDO_MUTATOR").unwrap_or_else(|_| {
         let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
         let mut r = Rng::new(t as u64 ^ lobby.seed as u64);
         match r.below(9) {
@@ -163,7 +184,7 @@ fn start_round(state: &Shared, lobby: &mut Lobby) {
             _ => "",
         }
         .to_string()
-    };
+    });
     let secs = if lobby.mutator == "lightning" {
         (lobby.config.round_secs / 3).clamp(15, 45)
     } else {
@@ -323,6 +344,9 @@ fn handle_msg(
                     id,
                     name: sanitize_name(&name),
                     tx: tx.clone(),
+                    token: gen_token(),
+                    connected: true,
+                    disconnect_gen: 0,
                     found_rank: 0,
                     found_at_ms: -1,
                     misses: 0,
@@ -367,6 +391,9 @@ fn handle_msg(
                 id,
                 name: sanitize_name(&name),
                 tx: tx.clone(),
+                token: gen_token(),
+                connected: true,
+                disconnect_gen: 0,
                 found_rank: 0,
                 found_at_ms: -1,
                 misses: 0,
@@ -377,6 +404,47 @@ fn handle_msg(
                 total: 0,
             });
             broadcast_lobby(lobby);
+            *session = Some((code, id));
+        }
+
+        ClientMsg::Rejoin { code, token } => {
+            if session.is_some() {
+                return err(tx, "already in a lobby");
+            }
+            let code = code.trim().to_uppercase();
+            let Some(lobby) = lobbies.get_mut(&code) else {
+                return err(tx, "session expired");
+            };
+            let Some(p) = lobby.players.iter_mut().find(|p| p.token == token) else {
+                return err(tx, "session expired");
+            };
+            p.tx = tx.clone();
+            p.connected = true;
+            p.disconnect_gen += 1;
+            let id = p.id;
+            let restore = if lobby.phase == Phase::Playing {
+                Some(ServerMsg::Restore {
+                    round: lobby.round,
+                    total_rounds: lobby.config.rounds,
+                    seed: lobby.seed,
+                    round_secs: (lobby.round_len_ms / 1000) as u32,
+                    mutator: lobby.mutator.clone(),
+                    ends_at_ms: lobby.round_ends_ms,
+                    found_rank: p.found_rank,
+                    misses: p.misses,
+                    wenda: p.wenda,
+                    woof: p.woof,
+                    wizard: p.wizard,
+                    odlaw: p.odlaw,
+                })
+            } else {
+                None
+            };
+            broadcast_lobby(lobby);
+            if let Some(r) = restore {
+                let p = lobby.players.iter().find(|p| p.id == id).unwrap();
+                send_to(p, &r);
+            }
             *session = Some((code, id));
         }
 
@@ -488,7 +556,7 @@ fn handle_msg(
             if target == "waldo" {
                 let found = found_before + 1;
                 broadcast(lobby, &ServerMsg::PlayerFound { id: *id, found, total: total_players });
-                if found == total_players {
+                if all_connected_found(lobby) {
                     finish_round(state, lobby);
                 }
             }
@@ -497,8 +565,8 @@ fn handle_msg(
     }
 }
 
-fn leave(state: &Shared, code: &str, id: u32) {
-    let mut lobbies = state.lobbies.lock().unwrap();
+/// Remove a player for real (grace period expired or lobby shutdown).
+fn hard_remove(state: &Shared, lobbies: &mut HashMap<String, Lobby>, code: &str, id: u32) {
     let Some(lobby) = lobbies.get_mut(code) else { return };
     lobby.players.retain(|p| p.id != id);
     if lobby.players.is_empty() {
@@ -506,11 +574,43 @@ fn leave(state: &Shared, code: &str, id: u32) {
         return;
     }
     broadcast_lobby(lobby);
-    if lobby.phase == Phase::Playing
-        && lobby.players.iter().all(|p| p.found_rank > 0)
-    {
+    if lobby.phase == Phase::Playing && all_connected_found(lobby) {
         finish_round(state, lobby);
     }
+}
+
+fn all_connected_found(lobby: &Lobby) -> bool {
+    let connected: Vec<_> = lobby.players.iter().filter(|p| p.connected).collect();
+    !connected.is_empty() && connected.iter().all(|p| p.found_rank > 0)
+}
+
+/// A socket dropped: keep the player for a grace period so they can rejoin.
+fn leave(state: &Shared, code: &str, id: u32) {
+    let mut lobbies = state.lobbies.lock().unwrap();
+    let Some(lobby) = lobbies.get_mut(code) else { return };
+    let Some(p) = lobby.players.iter_mut().find(|p| p.id == id) else { return };
+    p.connected = false;
+    p.disconnect_gen += 1;
+    let gen = p.disconnect_gen;
+    broadcast_lobby(lobby);
+    if lobby.phase == Phase::Playing && all_connected_found(lobby) {
+        finish_round(state, lobby);
+    }
+
+    let state = state.clone();
+    let code = code.to_string();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(grace_ms())).await;
+        let mut lobbies = state.lobbies.lock().unwrap();
+        let still_gone = lobbies
+            .get(&code)
+            .and_then(|l| l.players.iter().find(|p| p.id == id))
+            .map(|p| !p.connected && p.disconnect_gen == gen)
+            .unwrap_or(false);
+        if still_gone {
+            hard_remove(&state, &mut lobbies, &code, id);
+        }
+    });
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Shared>) -> Response {

@@ -1,5 +1,5 @@
-//! Deterministic world generation and scoring for Waldo Royale.
-//! Compiled to wasm32 for the browser and natively for the server;
+//! Deterministic world generation, scoring and the wire protocol.
+//! Compiled to wasm32 for the client and natively for the server;
 //! one seed produces the same world on both.
 
 pub mod math;
