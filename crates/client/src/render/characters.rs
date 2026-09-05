@@ -257,9 +257,16 @@ pub fn build_character(role: &str) -> Parts {
 
 /// Procedural props still built from primitives: (mesh_a, color_a, mesh_b?, color_b).
 pub fn pond() -> (CpuMesh, Srgba) {
+    // three-d cylinders are capless tubes; a pond is the top surface, so
+    // use a flat disc lying on the ground
     let mut m = empty_mesh();
-    let (c, t) = cylinder_y(0.5, 0.5, 0.04);
-    append(&mut m, c, t);
+    append(
+        &mut m,
+        CpuMesh::circle(24),
+        Mat4::from_translation(vec3(0.0, 0.03, 0.0))
+            * Mat4::from_angle_x(degrees(-90.0))
+            * Mat4::from_scale(0.5),
+    );
     (m, POND_BLUE)
 }
 
@@ -267,6 +274,14 @@ pub fn decoy() -> (CpuMesh, CpuMesh) {
     let mut a = empty_mesh();
     let mut b = empty_mesh();
     striped_cylinder(&mut a, &mut b, 0.11, 0.09, 0.9, 6, Mat4::identity());
+    // cap the open tube top (last band is the b color)
+    append(
+        &mut b,
+        CpuMesh::circle(14),
+        Mat4::from_translation(vec3(0.0, 0.9, 0.0))
+            * Mat4::from_angle_x(degrees(-90.0))
+            * Mat4::from_scale(0.09),
+    );
     (a, b)
 }
 
