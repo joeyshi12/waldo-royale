@@ -220,7 +220,7 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
         // ---------- round results ----------
         <Show when=move || ui.screen.get() == Screen::Results>
             <div class="screen show">
-                <div class="card">
+                <div class="card wide">
                     <h1 style="font-size:22px">
                         "Round " {move || ui.results_round.get()} " results"
                     </h1>
@@ -246,7 +246,7 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
                                     </td>
                                     <td>
                                         {if r.found {
-                                            format!("#{} · {:.1} s", r.rank, r.time_ms as f64 / 1000.0)
+                                            format!("#{} · {:.1}s", r.rank, r.time_ms as f64 / 1000.0)
                                         } else {
                                             "not found".into()
                                         }}
@@ -278,18 +278,13 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
         // ---------- win screen ----------
         <Show when=move || ui.screen.get() == Screen::Final>
             <div class="screen show">
-                <div class="card" style="text-align:center">
+                <div class="card wide" style="text-align:center">
                     {move || {
                         let lb = ui.leaderboard.get();
                         let me = ui.you.get();
                         let my_rank = lb.iter().position(|s| s.id == me);
                         let i_won = my_rank == Some(0);
-                        let trophy = match my_rank {
-                            Some(0) => "🏆",
-                            Some(1) => "🥈",
-                            Some(2) => "🥉",
-                            _ => "😔",
-                        };
+                        let _ = my_rank; // icon is the game's own mark, not an emoji
                         let headline = if i_won {
                             "You win!".to_string()
                         } else {
@@ -303,20 +298,33 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
                             format!("you finished {place}{suffix} of {}", lb.len())
                         };
                         view! {
-                            <div id="trophy">{trophy}</div>
+                            <img src="./favicon.svg" width="72" height="72" alt=""
+                                style="margin-bottom:6px"/>
                             <h1 id="winnerName" style:color=if i_won { "#ffe14a" } else { "#b9c0d8" }>
                                 {headline}
                             </h1>
                             <div class="sub" style="margin-bottom:14px">{sub}</div>
                             <ol id="podium">
                                 {lb.iter().enumerate().map(|(i, s)| {
-                                    let medal = ["🥇", "🥈", "🥉"].get(i).copied()
-                                        .map(String::from)
-                                        .unwrap_or(format!("{}.", i + 1));
+                                    let (label, color) = match i {
+                                        0 => ("1st", "#ffe14a"),
+                                        1 => ("2nd", "#c0c8d8"),
+                                        2 => ("3rd", "#d4915d"),
+                                        _ => ("", "#9aa3c0"),
+                                    };
+                                    let label = if label.is_empty() {
+                                        format!("{}th", i + 1)
+                                    } else {
+                                        label.to_string()
+                                    };
                                     let you = if s.id == me { " (you)" } else { "" };
                                     view! {
                                         <li>
-                                            <span>{medal} " " {s.name.clone()} {you}</span>
+                                            <span>
+                                                <span class="rank" style:color=color
+                                                    style:border-color=color>{label}</span>
+                                                " " {s.name.clone()} {you}
+                                            </span>
                                             <b>{s.total}</b>
                                         </li>
                                     }

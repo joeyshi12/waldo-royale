@@ -332,9 +332,12 @@ async fn run(ui: Ui, game: Shared) {
                         Gm::new(
                             Mesh::new(&context, mesh),
                             ColorMaterial {
-                                color: Srgba::WHITE,
+                                color: Srgba::new(255, 255, 255, 110),
+                                is_transparent: true,
                                 render_states: RenderStates {
                                     depth_test: DepthTest::Always,
+                                    blend: Blend::TRANSPARENCY,
+                                    write_mask: WriteMask::COLOR,
                                     ..Default::default()
                                 },
                                 ..Default::default()
@@ -571,7 +574,12 @@ async fn run(ui: Ui, game: Shared) {
                     gm: Gm::new(
                         Mesh::new(&context, &marker_mesh),
                         ColorMaterial {
-                            color: Srgba::new(color[0], color[1], color[2], 255),
+                            color: Srgba::new(color[0], color[1], color[2], 160),
+                            is_transparent: true,
+                            render_states: RenderStates {
+                                blend: Blend::TRANSPARENCY,
+                                ..Default::default()
+                            },
                             ..Default::default()
                         },
                     ),
@@ -591,7 +599,12 @@ async fn run(ui: Ui, game: Shared) {
                     gm: Gm::new(
                         Mesh::new(&context, &marker_mesh),
                         ColorMaterial {
-                            color: Srgba::new(255, 225, 74, 255),
+                            color: Srgba::new(255, 225, 74, 160),
+                            is_transparent: true,
+                            render_states: RenderStates {
+                                blend: Blend::TRANSPARENCY,
+                                ..Default::default()
+                            },
                             ..Default::default()
                         },
                     ),
