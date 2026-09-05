@@ -452,6 +452,11 @@ async fn run(ui: Ui, game: Shared) {
             }
         }
 
+        if round_id != built_round && world.is_none() {
+            // player left the game: clear the scene back to the starfield
+            scene = None;
+            built_round = round_id;
+        }
         if round_id != built_round {
             if let (Some(world), Some(lib)) = (world.as_ref(), lib.borrow().as_ref()) {
                 let t0 = now_ms();

@@ -69,6 +69,7 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
         game_sv.with_value(|g| connect_and(ui, g.clone(), ClientMsg::Join { code: c, name: name.get() }));
     };
     let start = move |_| game_sv.with_value(|g| send(g, &ClientMsg::Start));
+    let leave = move |_| game_sv.with_value(|g| crate::net::leave(ui, g));
     let configure = move |rounds: u32, secs: u32| {
         game_sv.with_value(|g| send(g, &ClientMsg::Configure { rounds, round_secs: secs }));
     };
@@ -179,6 +180,7 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
                     <Show when=move || !is_host()>
                         <div id="waitingMsg">"waiting for the host to start…"</div>
                     </Show>
+                    <button class="link" on:click=leave>"Leave lobby"</button>
                 </div>
             </div>
         </Show>
@@ -215,6 +217,7 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
             <Show when=move || !ui.found_banner.get().is_empty()>
                 <div class="hud" id="foundBanner">{move || ui.found_banner.get()}</div>
             </Show>
+            <button class="hud" id="leaveBtn" on:click=leave>"Leave"</button>
         </Show>
 
         // ---------- round results ----------

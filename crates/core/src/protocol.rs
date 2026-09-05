@@ -45,6 +45,8 @@ pub enum ClientMsg {
     Start,
     /// Resume a session after a dropped connection or page refresh.
     Rejoin { code: String, token: String },
+    /// Deliberately exit the lobby (no grace period, no rejoin).
+    Leave,
     /// Claim Waldo is at this planet-local position; the server judges.
     Click { pos: [f32; 3] },
 }

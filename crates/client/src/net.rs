@@ -265,6 +265,23 @@ fn handle(ui: Ui, game: &Shared, msg: ServerMsg) {
     }
 }
 
+/// Deliberately exit the lobby: no reconnect, straight back to the menu.
+pub fn leave(ui: Ui, game: &Shared) {
+    send(game, &ClientMsg::Leave);
+    {
+        let mut g = game.borrow_mut();
+        g.session = None;
+        g.playing = false;
+        g.found = false;
+        g.world = None;
+        g.round_id += 1; // renderer tears the scene down
+    }
+    crate::state::clear_session();
+    ui.found_banner.set(String::new());
+    ui.found_count.set(String::new());
+    ui.screen.set(Screen::Menu);
+}
+
 /// Send a guess click for a planet-local position (called from the renderer).
 pub fn send_click(game: &Shared, pos: [f32; 3]) {
     send(game, &ClientMsg::Click { pos });

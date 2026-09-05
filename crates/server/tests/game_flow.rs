@@ -277,3 +277,50 @@ async fn dropped_player_can_rejoin_mid_round() {
     let e = recv_type(&mut mallory, "error").await;
     assert_eq!(e["message"], "session expired");
 }
+
+#[tokio::test]
+async fn leaving_mid_round_removes_player_immediately() {
+    let _guard = start_server_on(8994).await;
+    let connect = || async {
+        let (ws, _) = connect_async("ws://127.0.0.1:8994/ws").await.expect("connect");
+        ws
+    };
+
+    let mut alice = connect().await;
+    send(&mut alice, json!({"type": "create", "name": "Alice"})).await;
+    let lobby = recv_type(&mut alice, "lobby").await;
+    let code = lobby["code"].as_str().unwrap().to_string();
+
+    let mut bob = connect().await;
+    send(&mut bob, json!({"type": "join", "code": code, "name": "Bob"})).await;
+    recv_type(&mut bob, "lobby").await;
+    recv_type(&mut alice, "lobby").await;
+
+    send(&mut alice, json!({"type": "configure", "rounds": 1, "round_secs": 60})).await;
+    recv_type(&mut alice, "lobby").await;
+    send(&mut alice, json!({"type": "start"})).await;
+    let rs = recv_type(&mut alice, "round_start").await;
+    let seed = rs["seed"].as_u64().unwrap() as u32;
+    let mutator = rs["mutator"].as_str().unwrap().to_string();
+    recv_type(&mut bob, "round_start").await;
+
+    // Bob deliberately leaves mid-round: removed at once, no grace period
+    send(&mut bob, json!({"type": "leave"})).await;
+    let lb = recv_type(&mut alice, "lobby").await;
+    let players = lb["players"].as_array().unwrap();
+    assert_eq!(players.len(), 1, "Bob should be gone immediately");
+    assert_eq!(players[0]["name"], "Alice");
+
+    // the round now ends as soon as Alice alone finds Waldo
+    let world = waldo_core::generate_world_opts(seed, waldo_core::mutator_opts(&mutator));
+    let w = world.waldo.pos;
+    send(&mut alice, json!({"type": "click", "pos": [w[0], w[1], w[2]]})).await;
+    recv_type(&mut alice, "click_result").await;
+    let res = recv_type(&mut alice, "round_result").await;
+    assert_eq!(res["results"].as_array().unwrap().len(), 1);
+
+    // Bob can start fresh on the same socket
+    send(&mut bob, json!({"type": "create", "name": "Bob2"})).await;
+    let nl = recv_type(&mut bob, "lobby").await;
+    assert_eq!(nl["players"].as_array().unwrap().len(), 1);
+}

@@ -448,6 +448,11 @@ fn handle_msg(
             *session = Some((code, id));
         }
 
+        ClientMsg::Leave => {
+            let Some((code, id)) = session.take() else { return };
+            hard_remove(state, &mut lobbies, &code, id);
+        }
+
         ClientMsg::Configure { rounds, round_secs } => {
             let Some((code, id)) = session else { return err(tx, "not in a lobby") };
             let Some(lobby) = lobbies.get_mut(code) else { return };
