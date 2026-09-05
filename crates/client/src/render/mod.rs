@@ -377,6 +377,36 @@ async fn run(ui: Ui, game: Shared) {
         500.0,
     );
 
+    // static starfield, same as the old client's: tiny unlit spheres far out
+    let stars: Gm<InstancedMesh, ColorMaterial> = {
+        let mut rng = waldo_core::rng::Rng::new(0x57a125);
+        let transformations = (0..400)
+            .map(|_| {
+                // uniform-ish direction via rejection sampling
+                let dir = loop {
+                    let v = vec3(
+                        rng.range(-1.0, 1.0),
+                        rng.range(-1.0, 1.0),
+                        rng.range(-1.0, 1.0),
+                    );
+                    if v.magnitude2() > 0.01 && v.magnitude2() <= 1.0 {
+                        break v.normalize();
+                    }
+                };
+                Mat4::from_translation(dir * rng.range(140.0, 240.0))
+                    * Mat4::from_scale(rng.range(0.15, 0.5))
+            })
+            .collect();
+        Gm::new(
+            InstancedMesh::new(
+                &context,
+                &Instances { transformations, ..Default::default() },
+                &CpuMesh::sphere(4),
+            ),
+            ColorMaterial { color: Srgba::new(255, 255, 255, 230), ..Default::default() },
+        )
+    };
+
     // one tiny instanced object to warm the instanced-mesh shader too
     // (created once the model library finishes loading)
     let mut warmup_instanced: Option<IGm> = None;
@@ -442,7 +472,7 @@ async fn run(ui: Ui, game: Shared) {
         let Some(s) = scene.as_mut() else {
             // warm the shaders while the menu is up: draw every material kind
             // at epsilon scale so first-round start doesn't stall on compiles
-            let mut warm: Vec<&dyn Object> = Vec::new();
+            let mut warm: Vec<&dyn Object> = vec![&stars];
             for (_, parts, outline) in char_gms.iter() {
                 for (gm, _) in parts.iter().take(1) {
                     warm.push(gm);
@@ -646,7 +676,7 @@ async fn run(ui: Ui, game: Shared) {
         }
 
         // ---- render ----
-        let mut objects: Vec<&dyn Object> = vec![&s.planet];
+        let mut objects: Vec<&dyn Object> = vec![&stars, &s.planet];
         for (gm, _) in s.instanced.iter() {
             objects.push(gm);
         }
