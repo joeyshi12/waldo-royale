@@ -27,10 +27,22 @@ pub fn connect_and(ui: Ui, game: Shared, first: ClientMsg) {
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 6;
 
-pub fn open_socket(ui: Ui, game: Shared, first: ClientMsg) {
+/// `ws` resolved against the directory the page is served from, so the game
+/// works behind a reverse proxy that mounts it under a path prefix
+/// (`/waldo-royale/` -> `wss://host/waldo-royale/ws`).
+fn socket_url() -> String {
     let loc = web_sys::window().unwrap().location();
     let proto = if loc.protocol().unwrap() == "https:" { "wss" } else { "ws" };
-    let url = format!("{proto}://{}/ws", loc.host().unwrap());
+    let path = loc.pathname().unwrap_or_else(|_| "/".into());
+    let dir = match path.rfind('/') {
+        Some(i) => &path[..=i],
+        None => "/",
+    };
+    format!("{proto}://{}{dir}ws", loc.host().unwrap())
+}
+
+pub fn open_socket(ui: Ui, game: Shared, first: ClientMsg) {
+    let url = socket_url();
     let Ok(ws) = WebSocket::new(&url) else {
         ui.toast("cannot reach the game server", "error");
         return;
