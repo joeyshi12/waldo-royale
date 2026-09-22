@@ -1,6 +1,6 @@
 name: Publish image
 
-# Publishes registry.internal/waldo-royale when the workspace version
+# Publishes ghcr.io/joeyshi12/waldo-royale when the workspace version
 # in Cargo.toml changes on main. Skips if the version tag already exists.
 
 on:
@@ -8,12 +8,14 @@ on:
     branches: [main]
 
 env:
-  REGISTRY: registry.internal
-  IMAGE: registry.internal/waldo-royale
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -25,12 +27,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Workspace version: $VERSION"
 
-      - name: Log in to Gitea registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: registry.internal
-          username: ${{ secrets.REGISTRY_USER }}
-          password: ${{ secrets.REGISTRY_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check whether this version is already published
         id: exists

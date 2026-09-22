@@ -43,6 +43,7 @@ docker compose up -d   # serves on :8017
 
 CI runs the test suite on every push and pull request. Bumping the workspace
 version in `Cargo.toml` and pushing to `main` publishes
-`registry.internal/waldo-royale:<version>` to the Gitea container
-registry; pushes that keep the same version publish nothing. Registry
-credentials come from the repo secrets `REGISTRY_USER` and `REGISTRY_TOKEN`.
+`ghcr.io/joeyshi12/waldo-royale:<version>` and `:latest` to the GitHub
+Container Registry; pushes that keep the same version publish nothing. The
+publish job authenticates with the built-in `GITHUB_TOKEN`, so there are no
+registry secrets to configure.
