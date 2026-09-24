@@ -2,7 +2,9 @@
 //! planet, waldo-core generates the world.
 
 mod net;
+mod peer;
 mod render;
+mod signal;
 mod state;
 mod ui;
 
