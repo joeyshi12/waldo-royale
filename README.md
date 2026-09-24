@@ -44,17 +44,32 @@ cargo test --workspace --exclude waldo-client
 server. Left unset it falls back to the origin the page came from, which only works
 if one happens to be there.
 
-Or with Docker, which builds the wasm and serves the result with nginx:
+## Deploying
+
+`web/` is the whole site: a page, a wasm bundle and 3 MB of scenery, 63 files and
+about 5 MB. There is nothing to run, so any static host will do.
+
+CI builds it on every push and attaches it as the `site` artifact, so a deploy is a
+download and an upload. For Cloudflare Pages:
 
 ```sh
-RENDEZVOUS_URL=https://rv.example docker compose up -d --build   # :8017
+npx wrangler pages deploy web --project-name waldo-royale
 ```
 
-## Releases
+`web/_headers` is read by Pages and sets `Cache-Control: no-cache` on everything,
+which matters more than it looks: a browser running a cached bundle would be talking
+to a peer on newer code, and the host is another player rather than a server, so
+there is nothing in the middle to absorb the mismatch.
 
-CI runs the test suite on every push and pull request. Bumping the workspace
-version in `Cargo.toml` and pushing to `main` publishes
-`ghcr.io/joeyshi12/waldo-royale:<version>` and `:latest` to the GitHub
-Container Registry; pushes that keep the same version publish nothing. The
-publish job authenticates with the built-in `GITHUB_TOKEN`, so there are no
-registry secrets to configure.
+Building in Pages itself is possible but not recommended. Its build has a 20 minute
+limit and one concurrent job, and a cold release build of `three-d`, `leptos` and
+`wasm-pack` is slow enough to make that uncomfortable.
+
+## CI
+
+`ci.yml` runs the test suite and checks the client compiles for wasm.
+
+`build.yml` does the real release build and uploads `web/` as the `site` artifact. It
+also asserts the rendezvous host appears in the built wasm, because `option_env!`
+resolves to `None` without complaint: a missing `RENDEZVOUS_URL` would otherwise
+produce a bundle that silently signals against the page origin instead of failing.
