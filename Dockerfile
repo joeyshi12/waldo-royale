@@ -9,10 +9,10 @@ RUN rustup target add wasm32-unknown-unknown \
 
 WORKDIR /app
 COPY . .
-# Where the client looks for the signalling server. Baked in, because the page may be
-# served from anywhere and the signalling server is somewhere else.
-ARG SIGNAL_URL=""
-ENV SIGNAL_URL=${SIGNAL_URL}
+# Where the client looks for the rendezvous server. Baked in, because the page may be
+# served from anywhere and the rendezvous server is somewhere else.
+ARG RENDEZVOUS_URL=""
+ENV RENDEZVOUS_URL=${RENDEZVOUS_URL}
 RUN wasm-pack build crates/client --target web --release --out-dir ../../web/pkg
 
 FROM nginx:1-alpine

@@ -6,9 +6,9 @@
 //! to outlive the call that installed it. They are kept in [`Peer`] rather than
 //! leaked with `forget`, so dropping a `Peer` drops its handlers.
 //!
-//! The signalling server takes one complete offer and does not trickle candidates,
+//! The rendezvous server takes one complete offer and does not trickle candidates,
 //! so both sides wait for ICE gathering to finish before handing their description
-//! over. That costs a second or so at connect time and is the price of a signalling
+//! over. That costs a second or so at connect time and is the price of a rendezvous
 //! server that is a plain mailbox.
 
 use std::{cell::RefCell, rc::Rc};
@@ -21,7 +21,7 @@ use web_sys::{
     RtcSessionDescriptionInit,
 };
 
-use crate::signal::{Description, IceServer};
+use crate::rendezvous::{Description, IceServer};
 
 /// The channel label both sides must agree on, and a version marker with it: a peer
 /// running older code will not match, which is a clearer failure than exchanging
@@ -136,7 +136,7 @@ impl Peer {
         *self.channel.borrow_mut() = Some(channel);
     }
 
-    /// Resolves once ICE gathering has finished, because the signalling server takes
+    /// Resolves once ICE gathering has finished, because the rendezvous server takes
     /// one complete description rather than a stream of candidates.
     async fn gathered(&self) -> Result<(), String> {
         if self.conn.ice_gathering_state() == RtcIceGatheringState::Complete {
@@ -190,7 +190,7 @@ fn description_init(d: &Description) -> Result<RtcSessionDescriptionInit, String
 }
 
 /// Build the joining half: create the channel, offer, and wait for gathering.
-/// Returns the peer and the offer to hand to the signalling server.
+/// Returns the peer and the offer to hand to the rendezvous server.
 pub async fn offer(servers: &[IceServer]) -> Result<(Rc<Peer>, Description), String> {
     let conn = RtcPeerConnection::new_with_configuration(&ice_config(servers)).map_err(err)?;
     let peer = Peer::wrap(conn);

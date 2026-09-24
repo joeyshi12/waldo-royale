@@ -11,7 +11,7 @@ world from a shared seed.
 
 One player hosts. Their browser runs the lobby rules and is the only peer the others
 talk to, over a WebRTC data channel each, and it scores every click. A
-[signalling server](https://github.com/joeyshi12/icebreaker) introduces the peers and
+[rendezvous server](https://github.com/joeyshi12/icebreaker) introduces the peers and
 carries nothing else; the host keeps polling it for the whole match so a dropped
 player can signal their way back in.
 
@@ -34,20 +34,20 @@ Scenery models are from [Kenney](https://kenney.nl) (CC0).
 Requires stable Rust, the `wasm32-unknown-unknown` target, and `wasm-pack`.
 
 ```sh
-SIGNAL_URL=https://signal.example wasm-pack build crates/client \
+RENDEZVOUS_URL=https://rv.example wasm-pack build crates/client \
   --target web --release --out-dir ../../web/pkg
 python3 -m http.server -d web 8017     # anything that serves static files
 cargo test --workspace --exclude waldo-client
 ```
 
-`SIGNAL_URL` is compiled in and is where the client looks for signalling. Left unset
-it falls back to the origin the page came from, which only works if a signalling
-server happens to be there.
+`RENDEZVOUS_URL` is compiled in and is where the client looks for the rendezvous
+server. Left unset it falls back to the origin the page came from, which only works
+if one happens to be there.
 
 Or with Docker, which builds the wasm and serves the result with nginx:
 
 ```sh
-SIGNAL_URL=https://signal.example docker compose up -d --build   # :8017
+RENDEZVOUS_URL=https://rv.example docker compose up -d --build   # :8017
 ```
 
 ## Releases
