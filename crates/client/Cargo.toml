@@ -18,9 +18,9 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
   "WebSocket", "MessageEvent", "Location", "Window", "Performance", "Storage",
-  # signalling over http
+  # the rendezvous server, over http
   "Request", "RequestInit", "Response", "Headers",
-  # the peer connections the signalling server introduces
+  # the peer connections the rendezvous server introduces
   "RtcPeerConnection", "RtcConfiguration", "RtcDataChannel", "RtcDataChannelEvent",
   "RtcDataChannelState", "RtcSessionDescriptionInit", "RtcSdpType", "RtcSessionDescription",
   "RtcIceCandidate", "RtcPeerConnectionIceEvent", "RtcIceGatheringState",

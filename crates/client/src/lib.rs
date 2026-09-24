@@ -5,7 +5,7 @@ mod net;
 mod netplay;
 mod peer;
 mod render;
-mod signal;
+mod rendezvous;
 mod state;
 mod ui;
 

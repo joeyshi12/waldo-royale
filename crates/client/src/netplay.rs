@@ -1,9 +1,9 @@
 //! Netplay: the game with no server.
 //!
 //! One player hosts. Their browser runs the [`Lobby`] rules from `waldo-core` and is
-//! the only peer everyone else talks to, over a data channel each. The signalling
+//! the only peer everyone else talks to, over a data channel each. The rendezvous
 //! server introduces them and is then out of the picture, except that the host keeps
-//! polling it so a dropped player can signal their way back in mid-match.
+//! polling it so a dropped player can find their way back in mid-match.
 //!
 //! The host is a player too, so its own messages never touch the network: they go
 //! straight into the local lobby, and the results come back through the same
@@ -24,11 +24,11 @@ use waldo_core::{
 use crate::{
     net,
     peer::{self, Peer},
-    signal::{self, IceServer},
+    rendezvous::{self, IceServer},
     state::{now_ms, Screen, Shared, Ui},
 };
 
-/// How often the host asks the signalling server for new joiners. Fast enough that
+/// How often the host asks the rendezvous server for new joiners. Fast enough that
 /// joining feels immediate, slow enough to be nothing next to ICE gathering.
 const POLL_MS: i32 = 1200;
 
@@ -83,14 +83,14 @@ fn seeded_rng() -> Rng {
 /// Become the host: reserve a code, then run the lobby locally.
 pub fn create(ui: Ui, game: Shared, name: String) {
     spawn_local(async move {
-        let hosted = match signal::host().await {
+        let hosted = match rendezvous::host().await {
             Ok(h) => h,
             Err(e) => return ui.toast(format!("Could not open a lobby: {e}"), "error"),
         };
         let mut rng = seeded_rng();
         let me = 1;
         let token = token_for(&mut rng);
-        // The signalling server caps joiners per room, and its cap wins: a twelfth
+        // The rendezvous server caps joiners per room, and its cap wins: a twelfth
         // player would be refused at /join before ever reaching this lobby. Honour
         // the smaller of the two so the lobby stops accepting at the same point
         // rather than letting someone through and failing later.
@@ -126,7 +126,7 @@ pub fn create(ui: Ui, game: Shared, name: String) {
     });
 }
 
-/// Ask the signalling server for offers, answer each one, and come back later. Runs
+/// Ask the rendezvous server for offers, answer each one, and come back later. Runs
 /// for the whole life of the lobby, not just while it is filling up, because that is
 /// how a dropped player gets back in.
 fn poll_for_joiners(ui: Ui, game: Shared, host: Rc<RefCell<Host>>) {
@@ -135,13 +135,13 @@ fn poll_for_joiners(ui: Ui, game: Shared, host: Rc<RefCell<Host>>) {
     }
     let code = host.borrow().code.clone();
     spawn_local(async move {
-        match signal::offers(&code).await {
+        match rendezvous::offers(&code).await {
             Ok(offers) => {
                 for o in offers {
                     let ice = host.borrow().ice.clone();
                     match peer::answer(&ice, &o.offer).await {
                         Ok((p, desc)) => {
-                            if let Err(e) = signal::answer(&code, o.seat, &desc).await {
+                            if let Err(e) = rendezvous::answer(&code, o.seat, &desc).await {
                                 ui.toast(format!("A player could not be let in: {e}"), "error");
                                 continue;
                             }
@@ -268,7 +268,7 @@ fn dispatch(ui: Ui, game: &Shared, host: &Rc<RefCell<Host>>, outs: Vec<Out>) {
                     h.code.clone()
                 };
                 spawn_local(async move {
-                    let _ = signal::close(&code).await;
+                    let _ = rendezvous::close(&code).await;
                 });
             }
         }
@@ -289,7 +289,7 @@ fn fire(ui: Ui, game: Shared, host: Rc<RefCell<Host>>, timer: Timer) {
 /// Connect to a host by code and send `first` once the channel opens.
 pub fn connect(ui: Ui, game: Shared, code: String, first: ClientMsg) {
     spawn_local(async move {
-        let ice = match signal::ice().await {
+        let ice = match rendezvous::ice().await {
             Ok(servers) => servers,
             Err(e) => return ui.toast(format!("Could not reach the lobby service: {e}"), "error"),
         };
@@ -297,16 +297,16 @@ pub fn connect(ui: Ui, game: Shared, code: String, first: ClientMsg) {
             Ok(pair) => pair,
             Err(e) => return ui.toast(format!("Could not start connecting: {e}"), "error"),
         };
-        let joined = match signal::join(&code, &offer).await {
+        let joined = match rendezvous::join(&code, &offer).await {
             Ok(j) => j,
             Err(e) if e.is_missing() => return ui.toast("No lobby with that code.", "error"),
             Err(e) => return ui.toast(format!("Could not join: {e}"), "error"),
         };
 
-        // the host answers through the signalling server, which hands it over once
+        // the host answers through the rendezvous server, which hands it over once
         let mut answer = None;
         for _ in 0..ANSWER_ATTEMPTS {
-            match signal::take_answer(&code, joined.seat).await {
+            match rendezvous::take_answer(&code, joined.seat).await {
                 Ok(Some(a)) => {
                     answer = Some(a);
                     break;
