@@ -10,9 +10,6 @@
 //! so both sides wait for ICE gathering to finish before handing their description
 //! over. That costs a second or so at connect time and is the price of a signalling
 //! server that is a plain mailbox.
-//!
-//! Nothing calls this yet; see the note in `signal`.
-#![allow(dead_code)]
 
 use std::{cell::RefCell, rc::Rc};
 

@@ -1,127 +1,20 @@
-//! WebSocket client. Deserializes ServerMsg with the shared waldo-core
-//! protocol types and routes them into UI signals and renderer state.
+//! Message handling: turns a ServerMsg into UI signals and renderer state.
+//!
+//! How the message arrived is `netplay`'s business. This module is the half that is
+//! the same whether we host the lobby or joined one, which is why the host feeds its
+//! own lobby's output through here too.
 
 use crate::state::{now_ms, Screen, Shared, Ui};
 use leptos::prelude::*;
 use std::rc::Rc;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
 use waldo_core::protocol::{ClientMsg, ServerMsg};
 use waldo_core::scoring;
-use web_sys::{MessageEvent, WebSocket};
 
 pub fn send(game: &Shared, msg: &ClientMsg) {
-    if let Some(ws) = game.borrow().ws.as_ref() {
-        let _ = ws.send_with_str(&serde_json::to_string(msg).unwrap());
-    }
+    crate::netplay::send(game, msg);
 }
 
-/// Connect (once) and send `first` when open.
-pub fn connect_and(ui: Ui, game: Shared, first: ClientMsg) {
-    if game.borrow().ws.is_some() {
-        send(&game, &first);
-        return;
-    }
-    open_socket(ui, game, first);
-}
-
-const MAX_RECONNECT_ATTEMPTS: u32 = 6;
-
-/// `ws` resolved against the directory the page is served from, so the game
-/// works behind a reverse proxy that mounts it under a path prefix
-/// (`/waldo-royale/` -> `wss://host/waldo-royale/ws`).
-fn socket_url() -> String {
-    let loc = web_sys::window().unwrap().location();
-    let proto = if loc.protocol().unwrap() == "https:" { "wss" } else { "ws" };
-    let path = loc.pathname().unwrap_or_else(|_| "/".into());
-    let dir = match path.rfind('/') {
-        Some(i) => &path[..=i],
-        None => "/",
-    };
-    format!("{proto}://{}{dir}ws", loc.host().unwrap())
-}
-
-pub fn open_socket(ui: Ui, game: Shared, first: ClientMsg) {
-    let url = socket_url();
-    let Ok(ws) = WebSocket::new(&url) else {
-        ui.toast("cannot reach the game server", "error");
-        return;
-    };
-
-    {
-        let game = game.clone();
-        let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |ev: MessageEvent| {
-            if let Some(text) = ev.data().as_string() {
-                if let Ok(msg) = serde_json::from_str::<ServerMsg>(&text) {
-                    handle(ui, &game, msg);
-                }
-            }
-        });
-        ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-        onmessage.forget();
-    }
-    {
-        let ws2 = ws.clone();
-        let first = serde_json::to_string(&first).unwrap();
-        let onopen = Closure::<dyn FnMut()>::new(move || {
-            let _ = ws2.send_with_str(&first);
-        });
-        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-        onopen.forget();
-    }
-    {
-        let game = game.clone();
-        let onclose = Closure::<dyn FnMut()>::new(move || {
-            let session = {
-                let mut g = game.borrow_mut();
-                g.ws = None;
-                g.playing = false;
-                g.session.clone()
-            };
-            match session {
-                Some((code, token)) => schedule_reconnect(ui, game.clone(), code, token),
-                None => {
-                    ui.toast("Lost the connection.", "error");
-                    ui.screen.set(Screen::Menu);
-                }
-            }
-        });
-        ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
-        onclose.forget();
-    }
-    game.borrow_mut().ws = Some(ws);
-}
-
-/// Retry with linear backoff while a session exists.
-fn schedule_reconnect(ui: Ui, game: Shared, code: String, token: String) {
-    let attempt = {
-        let mut g = game.borrow_mut();
-        g.reconnect_attempt += 1;
-        g.reconnect_attempt
-    };
-    if attempt > MAX_RECONNECT_ATTEMPTS {
-        game.borrow_mut().session = None;
-        crate::state::clear_session();
-        ui.toast("Could not reconnect.", "error");
-        ui.screen.set(Screen::Menu);
-        return;
-    }
-    ui.toast(format!("Connection lost, reconnecting ({attempt}/{MAX_RECONNECT_ATTEMPTS})…"), "info");
-    let delay_ms = (attempt * 1200) as i32;
-    let cb = Closure::<dyn FnMut()>::new(move || {
-        open_socket(ui, game.clone(), ClientMsg::Rejoin {
-            code: code.clone(),
-            token: token.clone(),
-        });
-    });
-    let _ = web_sys::window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(
-        cb.as_ref().unchecked_ref(),
-        delay_ms,
-    );
-    cb.forget();
-}
-
-fn handle(ui: Ui, game: &Shared, msg: ServerMsg) {
+pub(crate) fn handle(ui: Ui, game: &Shared, msg: ServerMsg) {
     match msg {
         ServerMsg::Error { message } => {
             if message == "session expired" {
@@ -302,7 +195,7 @@ pub fn send_click(game: &Shared, pos: [f32; 3]) {
 /// True while clicking is meaningful.
 pub fn can_click(game: &Shared) -> bool {
     let g = game.borrow();
-    g.playing && !g.found && g.ws.is_some()
+    g.playing && !g.found && g.link.as_ref().map(|l| l.is_open()).unwrap_or(false)
 }
 
 pub const _HIT_RADIUS: f32 = scoring::WALDO_HIT_RADIUS;

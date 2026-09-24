@@ -2,6 +2,7 @@
 //! planet, waldo-core generates the world.
 
 mod net;
+mod netplay;
 mod peer;
 mod render;
 mod signal;
@@ -19,11 +20,12 @@ pub fn main() {
 
     render::spawn(ui_state, game.clone());
 
-    // a page refresh mid-game rejoins automatically
+    // a page refresh mid-game signals its way back to the host
     if let Some((code, token)) = state::load_session() {
-        net::open_socket(
+        netplay::connect(
             ui_state,
             game.clone(),
+            code.clone(),
             waldo_core::protocol::ClientMsg::Rejoin { code, token },
         );
     }
