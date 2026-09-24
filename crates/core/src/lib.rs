@@ -2,6 +2,7 @@
 //! Compiled to wasm32 for the client and natively for the server;
 //! one seed produces the same world on both.
 
+pub mod lobby;
 pub mod math;
 pub mod protocol;
 pub mod rng;
