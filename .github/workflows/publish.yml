@@ -2,6 +2,10 @@ name: Publish image
 
 # Publishes ghcr.io/joeyshi12/waldo-royale when the workspace version
 # in Cargo.toml changes on main. Skips if the version tag already exists.
+#
+# The image is static files behind nginx; there is no server. SIGNAL_URL is baked
+# into the wasm at build time because the page and the signalling server live at
+# different hosts.
 
 on:
   push:
@@ -54,6 +58,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            SIGNAL_URL=${{ vars.SIGNAL_URL }}
           tags: |
             ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE }}:latest
