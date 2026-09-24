@@ -3,10 +3,6 @@
 //! Eight endpoints, all JSON over HTTP, no WebSocket. This module knows nothing
 //! about the game; it moves SDP blobs and returns seat numbers. See `peer` for the
 //! connections built from what it fetches.
-//!
-//! Nothing calls this yet: the host and joiner drivers that consume it are the next
-//! layer, and landing the transport on its own keeps that diff readable.
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsCast, JsValue};
@@ -35,7 +31,7 @@ pub struct Description {
     pub sdp: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct IceServer {
     pub urls: Vec<String>,
     #[serde(default)]
@@ -54,7 +50,8 @@ pub struct Hosted {
 #[derive(Deserialize, Debug)]
 pub struct Joined {
     pub seat: u32,
-    pub ice_servers: Vec<IceServer>,
+    // The response also carries ice_servers, but a joiner has already gathered
+    // candidates by this point, so it arrives too late to be of use.
 }
 
 #[derive(Deserialize, Debug)]
@@ -135,6 +132,17 @@ async fn call(path: &str, body: Option<String>) -> Result<Option<String>, Error>
 fn parse<T: for<'de> Deserialize<'de>>(body: Option<String>) -> Result<T, Error> {
     let body = body.ok_or_else(|| Error::Transport("expected a body, got 204".into()))?;
     serde_json::from_str(&body).map_err(|e| Error::Transport(e.to_string()))
+}
+
+/// The STUN and TURN servers to gather candidates against. A joiner needs these
+/// before it can build an offer, so it cannot wait for the `join` response.
+pub async fn ice() -> Result<Vec<IceServer>, Error> {
+    #[derive(Deserialize)]
+    struct Servers {
+        ice_servers: Vec<IceServer>,
+    }
+    let s: Servers = parse(call("/ice", None).await?)?;
+    Ok(s.ice_servers)
 }
 
 /// Reserve a room. The code is what a player reads out loud.

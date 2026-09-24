@@ -1,7 +1,8 @@
 //! All screens, as Leptos components emitting the same CSS classes the
 //! stylesheet in index.html defines.
 
-use crate::net::{connect_and, send};
+use crate::net::send;
+use crate::netplay;
 use crate::state::{now_ms, Screen, Shared, Ui};
 use send_wrapper::SendWrapper;
 use leptos::prelude::*;
@@ -58,7 +59,7 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
         StoredValue::new_local((*game).clone());
 
     let create = move |_| {
-        game_sv.with_value(|g| connect_and(ui, g.clone(), ClientMsg::Create { name: name.get() }))
+        game_sv.with_value(|g| netplay::create(ui, g.clone(), name.get()))
     };
     let join = move |_| {
         let c = code.get().trim().to_uppercase();
@@ -66,7 +67,7 @@ pub fn App(ui: Ui, game: SendWrapper<Shared>) -> impl IntoView {
             ui.toast("lobby codes are 4 letters", "error");
             return;
         }
-        game_sv.with_value(|g| connect_and(ui, g.clone(), ClientMsg::Join { code: c, name: name.get() }));
+        game_sv.with_value(|g| netplay::connect(ui, g.clone(), c.clone(), ClientMsg::Join { code: c.clone(), name: name.get() }));
     };
     let start = move |_| game_sv.with_value(|g| send(g, &ClientMsg::Start));
     let leave = move |_| game_sv.with_value(|g| crate::net::leave(ui, g));

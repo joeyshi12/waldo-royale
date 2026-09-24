@@ -32,7 +32,7 @@ pub struct PlayerInfo {
     pub connected: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMsg {
     /// Create a lobby and become its host.

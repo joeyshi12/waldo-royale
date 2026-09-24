@@ -1,4 +1,4 @@
-//! State shared between the Leptos UI, the WebSocket handlers and the
+//! State shared between the Leptos UI, the message handlers and the
 //! three-d render loop. Everything runs on the single wasm thread, so the
 //! renderer half lives in an Rc<RefCell> and the UI half in leptos signals.
 
@@ -7,7 +7,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use waldo_core::protocol::{Config, PlayerInfo, RoundEntry, Standing};
 use waldo_core::World;
-use web_sys::WebSocket;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Screen {
@@ -79,9 +78,10 @@ impl Ui {
     }
 }
 
-/// State the render loop consumes; written by the WebSocket handlers.
+/// State the render loop consumes; written by whichever end of the link we are.
 pub struct Game {
-    pub ws: Option<WebSocket>,
+    /// How we reach the lobby: our own if we host, a data channel if we joined.
+    pub link: Option<crate::netplay::Link>,
     /// (lobby code, session token) once joined; enables reconnecting.
     pub session: Option<(String, String)>,
     pub reconnect_attempt: u32,
@@ -102,7 +102,7 @@ pub type Shared = Rc<RefCell<Game>>;
 
 pub fn new_shared() -> Shared {
     Rc::new(RefCell::new(Game {
-        ws: None,
+        link: None,
         session: None,
         reconnect_attempt: 0,
         round_id: 0,

@@ -51,7 +51,7 @@ pub enum Out {
 
 /// Something that happened. `Client` wraps the wire protocol; the rest are things
 /// the transport knows and the protocol does not.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Event {
     /// A protocol message from a player, or from a connection with no player yet.
     /// `id` and `token` are used only by `Create` and `Join`, which need an
