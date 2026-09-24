@@ -1,0 +1,13 @@
+# Cloudflare Pages reads this and serves it as headers rather than as a file.
+#
+# The page and the wasm have to move together. A browser holding a cached bundle
+# would be talking to a peer running newer code, and since the host is now another
+# player rather than a server, there is nothing in the middle to tolerate the
+# mismatch. The old server sent this header for the same reason.
+/*
+  Cache-Control: no-cache
+
+# Browsers refuse to stream-compile wasm served as anything else. Only the wasm:
+# the js glue beside it has to stay a module.
+/pkg/waldo_client_bg.wasm
+  Content-Type: application/wasm

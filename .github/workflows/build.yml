@@ -1,0 +1,59 @@
+name: Build
+
+# Produces the deployable site as an artifact: the wasm bundle, the page and the
+# scenery. There is no server and no image; the output is a directory to upload to a
+# static host.
+#
+# RENDEZVOUS_URL is compiled into the wasm, because the page and the rendezvous
+# server are served from different hosts and the client cannot discover one from the
+# other. Set it as a repository variable.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the wasm target and wasm-pack
+        run: |
+          rustup target add wasm32-unknown-unknown
+          curl -sSfL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      - name: Build the client
+        env:
+          RENDEZVOUS_URL: ${{ vars.RENDEZVOUS_URL }}
+        run: wasm-pack build crates/client --target web --release --out-dir ../../web/pkg
+
+      - name: Check the rendezvous URL was compiled in
+        env:
+          RENDEZVOUS_URL: ${{ vars.RENDEZVOUS_URL }}
+        run: |
+          set -eu
+          if [ -z "${RENDEZVOUS_URL}" ]; then
+            echo "::warning::RENDEZVOUS_URL is not set, so the client will fall back to the page origin"
+            exit 0
+          fi
+          host=$(printf '%s' "${RENDEZVOUS_URL}" | sed -E 's#^https?://##; s#/.*##')
+          # option_env! fails quietly to None, so a missing variable would otherwise
+          # produce a bundle that silently signals against the wrong host
+          strings web/pkg/waldo_client_bg.wasm | grep -q "${host}" \
+            || { echo "::error::${host} is not in the built wasm"; exit 1; }
+          echo "${host} is compiled in"
+
+      - name: Report what would be deployed
+        run: |
+          echo "files: $(find web -type f | wc -l), size: $(du -sh web | cut -f1)"
+          find web -type f -size +1M -printf '  %s %p\n' | sort -rn
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: web
+          if-no-files-found: error
