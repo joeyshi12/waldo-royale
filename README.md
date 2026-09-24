@@ -4,10 +4,16 @@ A multiplayer "Where's Waldo" game. Players join a lobby, get the same
 procedurally generated 3D planet, and race to click Waldo. Fastest finder
 wins the round; highest total wins the game.
 
-The whole game is Rust, in three crates: `core` (worldgen, scoring,
-protocol) is shared by `client` (a wasm module: Leptos UI, three-d renderer)
-and `server` (the axum lobby). Every player derives the identical world from
-a shared seed and the server scores clicks authoritatively.
+There is no game server. The whole game is Rust in two crates: `core` (worldgen,
+scoring, protocol, and the lobby rules as a state machine with no I/O) and `client`
+(a wasm module: Leptos UI, three-d renderer). Every player derives the identical
+world from a shared seed.
+
+One player hosts. Their browser runs the lobby rules and is the only peer the others
+talk to, over a WebRTC data channel each, and it scores every click. A
+[signalling server](https://github.com/joeyshi12/icebreaker) introduces the peers and
+carries nothing else; the host keeps polling it for the whole match so a dropped
+player can signal their way back in.
 
 Scenery models are from [Kenney](https://kenney.nl) (CC0).
 
@@ -28,15 +34,20 @@ Scenery models are from [Kenney](https://kenney.nl) (CC0).
 Requires stable Rust, the `wasm32-unknown-unknown` target, and `wasm-pack`.
 
 ```sh
-wasm-pack build crates/client --target web --release --out-dir ../../web/pkg
-cargo run -p waldo-server --release   # serves web/ on :8017
+SIGNAL_URL=https://signal.example wasm-pack build crates/client \
+  --target web --release --out-dir ../../web/pkg
+python3 -m http.server -d web 8017     # anything that serves static files
 cargo test --workspace --exclude waldo-client
 ```
 
-Or with Docker:
+`SIGNAL_URL` is compiled in and is where the client looks for signalling. Left unset
+it falls back to the origin the page came from, which only works if a signalling
+server happens to be there.
+
+Or with Docker, which builds the wasm and serves the result with nginx:
 
 ```sh
-docker compose up -d   # serves on :8017
+SIGNAL_URL=https://signal.example docker compose up -d --build   # :8017
 ```
 
 ## Releases

@@ -1,7 +1,12 @@
-# Standalone deployment: builds the image and serves the game on :8017.
+# Standalone deployment: builds the image and serves the static game on :8017.
+# There is no game server; SIGNAL_URL is where the client looks for signalling, and
+# an empty value makes it fall back to the origin the page came from.
 services:
   waldo-royale:
-    build: .
+    build:
+      context: .
+      args:
+        SIGNAL_URL: ${SIGNAL_URL:-}
     container_name: waldo-royale
     restart: unless-stopped
     ports:
