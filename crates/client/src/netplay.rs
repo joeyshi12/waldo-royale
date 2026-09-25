@@ -1,9 +1,9 @@
 //! Netplay: the game with no server.
 //!
 //! One player hosts. Their browser runs the [`Lobby`] rules from `waldo-core` and is
-//! the only peer everyone else talks to, over a data channel each. The rendezvous
-//! server introduces them and is then out of the picture, except that the host keeps
-//! polling it so a dropped player can find their way back in mid-match.
+//! the only peer everyone else talks to, over a data channel each. Both ends keep their
+//! connection to the rendezvous server: the host's holds the room open and carries a late
+//! joiner in mid-match, and a joiner's holds its seat.
 //!
 //! The host is a player too, so its own messages never touch the network: they go
 //! straight into the local lobby, and the results come back through the same
@@ -24,42 +24,44 @@ use waldo_core::{
 use crate::{
     net,
     peer::{self, Peer},
-    rendezvous::{self, IceServer},
+    rendezvous::{IceServer, Rendezvous},
     state::{now_ms, Screen, Shared, Ui},
 };
 
-/// How often the host asks the rendezvous server for new joiners. Fast enough that
-/// joining feels immediate, slow enough to be nothing next to ICE gathering.
-const POLL_MS: i32 = 1200;
-
-/// How long a joiner waits for the host's answer before giving up.
-const ANSWER_ATTEMPTS: u32 = 25;
+/// Generous: the host has to gather ICE candidates before it can answer at all.
+const ANSWER_MS: i32 = 30_000;
 
 pub enum Link {
     /// We host: our own messages go into the local lobby.
     Host(Rc<RefCell<Host>>),
-    /// We joined: our messages go to the host over a data channel.
-    Joiner(Rc<Peer>),
+    /// We joined: our messages go to the host over a data channel. The rendezvous
+    /// connection is held rather than read, because dropping it gives up our seat.
+    Joiner {
+        peer: Rc<Peer>,
+        #[allow(dead_code)]
+        rendezvous: Rc<Rendezvous>,
+    },
 }
 
 impl Link {
     pub fn is_open(&self) -> bool {
         match self {
             Link::Host(_) => true,
-            Link::Joiner(p) => p.is_open(),
+            Link::Joiner { peer, .. } => peer.is_open(),
         }
     }
 }
 
 pub struct Host {
     ui: Ui,
-    code: String,
     lobby: Lobby,
     rng: Rng,
     next_id: u32,
     /// The host's own player id.
     me: u32,
     ice: Vec<IceServer>,
+    /// The room lives as long as this does, so it is held for the whole session.
+    rendezvous: Rc<Rendezvous>,
     /// Channels bound to a player.
     peers: Vec<(u32, Rc<Peer>)>,
     /// Channels answered but not yet claimed by a Join or Rejoin.
@@ -83,17 +85,19 @@ fn seeded_rng() -> Rng {
 /// Become the host: reserve a code, then run the lobby locally.
 pub fn create(ui: Ui, game: Shared, name: String) {
     spawn_local(async move {
-        let hosted = match rendezvous::host().await {
+        let rendezvous = match Rendezvous::connect().await {
+            Ok(rv) => rv,
+            Err(e) => return ui.toast(format!("Could not reach the lobby service: {e}"), "error"),
+        };
+        let hosted = match rendezvous.host().await {
             Ok(h) => h,
             Err(e) => return ui.toast(format!("Could not open a lobby: {e}"), "error"),
         };
         let mut rng = seeded_rng();
         let me = 1;
         let token = token_for(&mut rng);
-        // The rendezvous server caps joiners per room, and its cap wins: a twelfth
-        // player would be refused at /join before ever reaching this lobby. Honour
-        // the smaller of the two so the lobby stops accepting at the same point
-        // rather than letting someone through and failing later.
+        // the server's cap wins: a twelfth player is refused at the join before reaching
+        // this lobby, so stop accepting at the same point rather than failing later
         let default = Settings::default();
         let seats = (hosted.max_joiners as usize + 1).min(default.max_players);
         if seats < default.max_players {
@@ -101,12 +105,12 @@ pub fn create(ui: Ui, game: Shared, name: String) {
         }
         let host = Rc::new(RefCell::new(Host {
             ui,
-            code: hosted.code.clone(),
             lobby: Lobby::new(hosted.code.clone(), Settings { max_players: seats, ..default }),
             rng,
             next_id: me + 1,
             me,
             ice: hosted.ice_servers,
+            rendezvous: rendezvous.clone(),
             peers: Vec::new(),
             unclaimed: Vec::new(),
             current: None,
@@ -122,48 +126,48 @@ pub fn create(ui: Ui, game: Shared, name: String) {
             lobby.apply(now_ms() as u64, rng, ev)
         };
         dispatch(ui, &game, &host, outs);
-        poll_for_joiners(ui, game, host);
+        accept_joiners(ui, game, &host, &rendezvous);
     });
 }
 
-/// Ask the rendezvous server for offers, answer each one, and come back later. Runs
-/// for the whole life of the lobby, not just while it is filling up, because that is
+/// Runs for the whole life of the lobby rather than only while it fills up, because that is
 /// how a dropped player gets back in.
-fn poll_for_joiners(ui: Ui, game: Shared, host: Rc<RefCell<Host>>) {
-    if !host.borrow().open {
-        return;
-    }
-    let code = host.borrow().code.clone();
-    spawn_local(async move {
-        match rendezvous::offers(&code).await {
-            Ok(offers) => {
-                for o in offers {
-                    let ice = host.borrow().ice.clone();
-                    match peer::answer(&ice, &o.offer).await {
-                        Ok((p, desc)) => {
-                            if let Err(e) = rendezvous::answer(&code, o.seat, &desc).await {
-                                ui.toast(format!("A player could not be let in: {e}"), "error");
-                                continue;
-                            }
-                            wire_up(ui, &game, &host, p.clone());
-                            host.borrow_mut().unclaimed.push(p);
-                        }
-                        Err(e) => ui.toast(format!("A player could not connect: {e}"), "error"),
-                    }
-                }
-            }
-            Err(e) if e.is_missing() => {
-                // the room expired or was closed: stop polling rather than spinning
-                host.borrow_mut().open = false;
-                ui.toast("The lobby expired.", "error");
+///
+/// The handlers hold weak references: the host owns the connection and the connection owns
+/// these, so a strong reference here would be a cycle that never frees.
+fn accept_joiners(ui: Ui, game: Shared, host: &Rc<RefCell<Host>>, rendezvous: &Rc<Rendezvous>) {
+    let (weak_host, weak_rv) = (Rc::downgrade(host), Rc::downgrade(rendezvous));
+    rendezvous.on_offer(move |seat, offer| {
+        let (game, weak_host, weak_rv) = (game.clone(), weak_host.clone(), weak_rv.clone());
+        spawn_local(async move {
+            let (Some(host), Some(rendezvous)) = (weak_host.upgrade(), weak_rv.upgrade()) else {
                 return;
+            };
+            let ice = host.borrow().ice.clone();
+            let (peer, answer) = match peer::answer(&ice, &offer).await {
+                Ok(pair) => pair,
+                Err(e) => return ui.toast(format!("A player could not connect: {e}"), "error"),
+            };
+            if let Err(e) = rendezvous.answer(seat, &answer) {
+                return ui.toast(format!("A player could not be let in: {e}"), "error");
             }
-            Err(_) => {} // transient; try again on the next tick
+            wire_up(ui, &game, &host, peer.clone());
+            host.borrow_mut().unclaimed.push(peer);
+        });
+    });
+
+    let weak_host = Rc::downgrade(host);
+    rendezvous.on_lost(move |why| {
+        // the room expired, or the connection to the service went: either way no more
+        // players are arriving, and the ones already connected are unaffected
+        if let Some(host) = weak_host.upgrade() {
+            host.borrow_mut().open = false;
         }
-        let cb = Closure::once_into_js(move || poll_for_joiners(ui, game, host));
-        let _ = web_sys::window()
-            .unwrap()
-            .set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), POLL_MS);
+        ui.toast(format!("The lobby is no longer reachable: {why}"), "error");
+    });
+
+    rendezvous.on_refused(move |e| {
+        ui.toast(format!("A player could not be let in: {e}"), "error");
     });
 }
 
@@ -262,14 +266,9 @@ fn dispatch(ui: Ui, game: &Shared, host: &Rc<RefCell<Host>>, outs: Vec<Out>) {
                     );
             }
             Out::Empty => {
-                let code = {
-                    let mut h = host.borrow_mut();
-                    h.open = false;
-                    h.code.clone()
-                };
-                spawn_local(async move {
-                    let _ = rendezvous::close(&code).await;
-                });
+                let mut h = host.borrow_mut();
+                h.open = false;
+                h.rendezvous.close_room();
             }
         }
     }
@@ -289,7 +288,11 @@ fn fire(ui: Ui, game: Shared, host: Rc<RefCell<Host>>, timer: Timer) {
 /// Connect to a host by code and send `first` once the channel opens.
 pub fn connect(ui: Ui, game: Shared, code: String, first: ClientMsg) {
     spawn_local(async move {
-        let ice = match rendezvous::ice().await {
+        let rendezvous = match Rendezvous::connect().await {
+            Ok(rv) => rv,
+            Err(e) => return ui.toast(format!("Could not reach the lobby service: {e}"), "error"),
+        };
+        let ice = match rendezvous.ice().await {
             Ok(servers) => servers,
             Err(e) => return ui.toast(format!("Could not reach the lobby service: {e}"), "error"),
         };
@@ -297,27 +300,18 @@ pub fn connect(ui: Ui, game: Shared, code: String, first: ClientMsg) {
             Ok(pair) => pair,
             Err(e) => return ui.toast(format!("Could not start connecting: {e}"), "error"),
         };
-        let joined = match rendezvous::join(&code, &offer).await {
-            Ok(j) => j,
-            Err(e) if e.is_missing() => return ui.toast("No lobby with that code.", "error"),
-            Err(e) => return ui.toast(format!("Could not join: {e}"), "error"),
-        };
-
-        // the host answers through the rendezvous server, which hands it over once
-        let mut answer = None;
-        for _ in 0..ANSWER_ATTEMPTS {
-            match rendezvous::take_answer(&code, joined.seat).await {
-                Ok(Some(a)) => {
-                    answer = Some(a);
-                    break;
-                }
-                Ok(None) => sleep(POLL_MS).await,
-                Err(e) if e.is_missing() => return ui.toast("The lobby closed.", "error"),
-                Err(_) => sleep(POLL_MS).await,
+        if let Err(e) = rendezvous.join(&code, &offer).await {
+            if e.is_missing() {
+                return ui.toast("No lobby with that code.", "error");
             }
+            return ui.toast(format!("Could not join: {e}"), "error");
         }
-        let Some(answer) = answer else {
-            return ui.toast("The host did not answer.", "error");
+
+        // the host's answer arrives on this connection, pushed as soon as it is sent
+        let answer = match rendezvous.answered(ANSWER_MS).await {
+            Ok(a) => a,
+            Err(e) if e.is_missing() => return ui.toast("The lobby closed.", "error"),
+            Err(e) => return ui.toast(format!("{e}."), "error"),
         };
         if let Err(e) = peer::accept_answer(&p, &answer).await {
             return ui.toast(format!("Could not connect to the host: {e}"), "error");
@@ -338,9 +332,10 @@ pub fn connect(ui: Ui, game: Shared, code: String, first: ClientMsg) {
             ui.screen.set(Screen::Menu);
         });
 
-        game.borrow_mut().link = Some(Link::Joiner(p.clone()));
-        // the channel is open by the time the answer is applied, but a few frames of
-        // slack costs nothing and saves a race on slower machines
+        // held, not dropped: it is what keeps this seat for us to come back to
+        game.borrow_mut().link =
+            Some(Link::Joiner { peer: p.clone(), rendezvous: rendezvous.clone() });
+        // a few frames of slack saves a race on slower machines
         for _ in 0..20 {
             if p.is_open() {
                 break;
@@ -365,8 +360,8 @@ async fn sleep(ms: i32) {
 /// Send one message, whichever end we are.
 pub fn send(game: &Shared, msg: &ClientMsg) {
     let link = match &game.borrow().link {
-        Some(Link::Joiner(p)) => {
-            p.send(&serde_json::to_string(msg).unwrap());
+        Some(Link::Joiner { peer, .. }) => {
+            peer.send(&serde_json::to_string(msg).unwrap());
             return;
         }
         Some(Link::Host(h)) => h.clone(),
