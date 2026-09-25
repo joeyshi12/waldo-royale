@@ -50,23 +50,24 @@ there.
 ## Deploying
 
 `web/` is the whole site: a page, a wasm bundle and 3 MB of scenery, 63 files and
-about 5 MB. There is nothing to run, so any static host will do.
+about 5 MB. There is nothing to run, so a static host is enough. CI builds it on every
+push and attaches it as the `site` artifact, so a deploy is a download, an unpack and an
+upload.
 
-CI builds it on every push and attaches it as the `site` artifact, so a deploy is a
-download and an upload. For Cloudflare Pages:
+Two headers are not optional, and both were carried by a `web/_headers` file while the
+site was on Cloudflare Pages. Whatever serves the bundle now has to send them itself.
 
-```sh
-npx wrangler pages deploy web --project-name waldo-royale
-```
+**`Cache-Control: no-cache`, on everything.** A browser holding a cached bundle talks to
+a peer running newer code, and the host is another player rather than a server, so there
+is nothing in the middle to absorb the mismatch.
 
-`web/_headers` is read by Pages and sets `Cache-Control: no-cache` on everything,
-which matters more than it looks: a browser running a cached bundle would be talking
-to a peer on newer code, and the host is another player rather than a server, so
-there is nothing in the middle to absorb the mismatch.
+**`Content-Type: application/wasm` for `pkg/waldo_client_bg.wasm`.** Browsers refuse to
+stream-compile wasm served as anything else. Only the wasm: the js glue beside it has to
+stay a module. Most servers set this from the file extension, but not all do.
 
-Building in Pages itself is possible but not recommended. Its build has a 20 minute
-limit and one concurrent job, and a cold release build of `three-d`, `leptos` and
-`wasm-pack` is slow enough to make that uncomfortable.
+The bundle is subpath-safe, so it can be served from a directory rather than a domain
+root: every href is relative and the wasm is found with
+`new URL('waldo_client_bg.wasm', import.meta.url)`.
 
 ## CI
 
