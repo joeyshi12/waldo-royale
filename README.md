@@ -12,8 +12,9 @@ world from a shared seed.
 One player hosts. Their browser runs the lobby rules and is the only peer the others
 talk to, over a WebRTC data channel each, and it scores every click. A
 [rendezvous server](https://github.com/joeyshi12/icebreaker) introduces the peers and
-carries nothing else; the host keeps polling it for the whole match so a dropped
-player can signal their way back in.
+carries nothing else. Every peer holds one WebSocket to it for the whole match: the
+host's is what keeps the room open and brings a late joiner in mid-match, and a
+joiner's is what holds its seat, so a player who dropped has one to come back to.
 
 Scenery models are from [Kenney](https://kenney.nl) (CC0).
 
@@ -41,8 +42,10 @@ cargo test --workspace --exclude waldo-client
 ```
 
 `RENDEZVOUS_URL` is compiled in and is where the client looks for the rendezvous
-server. Left unset it falls back to the origin the page came from, which only works
-if one happens to be there.
+server. Give it the http origin, as above; the client swaps in `ws://` or `wss://`
+itself, so the same value is what a person would paste into a browser. Left unset it
+falls back to the origin the page came from, which only works if one happens to be
+there.
 
 ## Deploying
 
